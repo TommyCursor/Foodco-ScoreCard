@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Area Coach Performance Scorecard – Foodco</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header id="appHeader">
+  <div class="logo-mark">FC</div>
+  <div class="header-main">
+    <h1>Area Coach Performance Scorecard</h1>
+    <p>Supermarket &amp; 3F Operations</p>
+  </div>
+  <div class="header-actions" id="headerActions"></div>
+</header>
+
+<!-- ══ 1. LANDING ══════════════════════════════════════════════════════════ -->
+<div id="landingView" class="view view--hero">
+  <!-- Drop a supermarket/retail MP4 named hero-bg.mp4 into this folder for the video.
+       Free sources: pexels.com/videos · pixabay.com/videos · coverr.co (search "supermarket") -->
+  <video class="hero-video" autoplay loop muted playsinline>
+    <source src="hero-bg.mp4" type="video/mp4">
+  </video>
+  <div class="hero-overlay"></div>
+
+  <!-- Ambient light orbs — decorative depth layer -->
+  <div class="hero-orb hero-orb--1"></div>
+  <div class="hero-orb hero-orb--2"></div>
+  <div class="hero-orb hero-orb--3"></div>
+  <div class="hero-particles"></div>
+  <div class="hero-glow-spot"></div>
+
+  <div class="hero-content">
+    <div class="hero-eyebrow">Foodco Internal Platform</div>
+    <div class="hero-brand">
+      <div class="hero-logo-mark">FC</div>
+      <div class="hero-brand-text">
+        <h1 class="hero-title">Area Coach<br>Performance <span class="hero-title-accent">Scorecard</span></h1>
+        <p class="hero-subtitle">Supermarket &amp; 3F Operations</p>
+      </div>
+    </div>
+
+    <div class="hero-stats">
+      <div class="hero-stat"><span class="hero-stat-num">9</span><span class="hero-stat-label">KPIs Tracked</span></div>
+      <span class="hero-stat-sep"></span>
+      <div class="hero-stat"><span class="hero-stat-num">100</span><span class="hero-stat-label">Point Scale</span></div>
+      <span class="hero-stat-sep"></span>
+      <div class="hero-stat"><span class="hero-stat-num">5</span><span class="hero-stat-label">Rating Tiers</span></div>
+    </div>
+
+    <div class="hero-divider"><span class="hero-divider-dot"></span></div>
+
+    <p class="hero-select-label">Select your role to continue</p>
+    <div class="role-grid">
+      <button class="role-btn" id="hsoRoleBtn">
+        <span class="role-icon">🔐</span>
+        <span class="role-label">HSO / Admin</span>
+        <span class="role-desc">Configure coaches &amp; view all data</span>
+      </button>
+      <button class="role-btn role-btn--accent" id="coachRoleBtn">
+        <span class="role-icon">👤</span>
+        <span class="role-label">Area Coach</span>
+        <span class="role-desc">Enter data &amp; view your scorecard</span>
+      </button>
+    </div>
+
+    <div class="hero-carousel" id="heroCarousel">
+      <div class="carousel-track">
+        <div class="carousel-slide active">
+          <div class="carousel-icon-wrap"><span>📊</span></div>
+          <div class="carousel-body">
+            <div class="carousel-title">Sales &amp; Stock Performance</div>
+            <div class="carousel-desc">Track actual vs target across every branch in real time</div>
+          </div>
+        </div>
+        <div class="carousel-slide">
+          <div class="carousel-icon-wrap"><span>🎯</span></div>
+          <div class="carousel-body">
+            <div class="carousel-title">Instant Scoring Engine</div>
+            <div class="carousel-desc">Auto-calculated 100-point scorecard the moment you enter data</div>
+          </div>
+        </div>
+        <div class="carousel-slide">
+          <div class="carousel-icon-wrap"><span>📋</span></div>
+          <div class="carousel-body">
+            <div class="carousel-title">Full Scorecard History</div>
+            <div class="carousel-desc">Review every monthly entry and track your performance growth</div>
+          </div>
+        </div>
+        <div class="carousel-slide">
+          <div class="carousel-icon-wrap"><span>🔗</span></div>
+          <div class="carousel-body">
+            <div class="carousel-title">Google Sheets Import</div>
+            <div class="carousel-desc">Connect your spreadsheet and import all KPI data instantly</div>
+          </div>
+        </div>
+      </div>
+      <div class="carousel-dots" id="carouselDots">
+        <button class="carousel-dot active" data-slide="0" aria-label="Slide 1"></button>
+        <button class="carousel-dot" data-slide="1" aria-label="Slide 2"></button>
+        <button class="carousel-dot" data-slide="2" aria-label="Slide 3"></button>
+        <button class="carousel-dot" data-slide="3" aria-label="Slide 4"></button>
+      </div>
+    </div>
+
+    <p class="hero-footer-note">Foodco &mdash; Internal Performance Platform</p>
+  </div>
+</div>
+
+<!-- ══ 2. HSO PIN ══════════════════════════════════════════════════════════ -->
+<div id="hsoPinView" class="view fill-center hidden">
+  <div class="center-card center-card--narrow">
+    <div class="pin-icon">🔐</div>
+    <h2 class="card-title">HSO Login</h2>
+    <p class="card-sub">Enter your PIN to access the admin panel.</p>
+    <form id="pinForm">
+      <input type="password" id="pinInput" class="pin-input" placeholder="Enter PIN"
+             maxlength="10" autocomplete="off" inputmode="numeric" />
+      <div id="pinError" class="form-error hidden">Incorrect PIN. Please try again.</div>
+      <button type="submit" class="btn-primary btn-full">Enter →</button>
+    </form>
+    <button class="btn-link" id="backFromPin">← Back</button>
+    <p class="hint-text">Default PIN is <strong>1234</strong></p>
+  </div>
+</div>
+
+<!-- ══ 3. ADMIN PANEL ══════════════════════════════════════════════════════ -->
+<div id="adminView" class="view hidden">
+  <div class="sub-header">
+    <span class="sub-title">Admin Panel</span>
+    <button class="btn-ghost" id="exitAdminBtn">Exit Admin</button>
+  </div>
+  <nav class="mini-tab-bar">
+    <button class="mini-tab active" data-atab="aCoaches">Coaches</button>
+    <button class="mini-tab" data-atab="aSettings">Settings</button>
+    <button class="mini-tab" data-atab="aLeaderboard">Leaderboard</button>
+    <button class="mini-tab" data-atab="aScores">All Scorecards</button>
+  </nav>
+  <div class="container">
+
+    <!-- Coaches tab -->
+    <div id="aCoaches" class="atab-panel">
+      <div class="kpi-card">
+        <h3 class="section-label">Add New Coach</h3>
+        <form id="addCoachForm">
+          <div class="field-row">
+            <div class="field">
+              <label for="newCoachName">Full Name</label>
+              <input type="text" id="newCoachName" placeholder="e.g. Jane Dlamini" required />
+            </div>
+            <div class="field">
+              <label for="newCoachBranches">Branch(es)</label>
+              <input type="text" id="newCoachBranches" placeholder="e.g. CBD, Westpark, Fourways" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Add Coach</button>
+          </div>
+        </form>
+      </div>
+      <div id="adminCoachList"></div>
+    </div>
+
+    <!-- Settings tab -->
+    <div id="aSettings" class="atab-panel hidden">
+      <div class="kpi-card">
+        <h3 class="section-label">Change HSO PIN</h3>
+        <form id="changePinForm">
+          <div class="field-row">
+            <div class="field">
+              <label for="currentPin">Current PIN</label>
+              <input type="password" id="currentPin" placeholder="Current PIN" />
+            </div>
+            <div class="field">
+              <label for="newPin">New PIN</label>
+              <input type="password" id="newPin" placeholder="New PIN (min 4 digits)" minlength="4" />
+            </div>
+          </div>
+          <div id="pinChangeMsg" class="form-error hidden"></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Update PIN</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="kpi-card">
+        <h3 class="section-label">Google Sheets Integration</h3>
+        <p class="kpi-formula" style="margin-bottom:14px;">
+          Provide a Google OAuth 2.0 Client ID so coaches can import KPI data from Google Sheets.
+          <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener" class="ext-link">Set up Client ID →</a>
+        </p>
+        <form id="clientIdForm">
+          <div class="field">
+            <label for="googleClientIdInput">Google OAuth Client ID</label>
+            <input type="text" id="googleClientIdInput" placeholder="xxxxxxxx.apps.googleusercontent.com" />
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Save Client ID</button>
+          </div>
+        </form>
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid #f3f4f6;">
+          <p style="font-size:0.78rem;color:#6b7280;margin-bottom:10px;">Coaches must fill in their sheet using this column template:</p>
+          <button class="btn-secondary" id="downloadTemplateBtn" style="font-size:0.82rem;padding:9px 20px;">⬇ Download Data Template (CSV)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaderboard tab -->
+    <div id="aLeaderboard" class="atab-panel hidden">
+      <div class="lb-view-toggle">
+        <button class="lb-view-btn active" data-lbview="table">Rankings</button>
+        <button class="lb-view-btn" data-lbview="heatmap">Performance Heatmap</button>
+      </div>
+      <div id="leaderboardContent"></div>
+      <div id="heatmapContent" class="hidden"></div>
+    </div>
+
+    <!-- All Scorecards tab -->
+    <div id="aScores" class="atab-panel hidden">
+      <div id="allScorecardsList"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ 4. COACH SELECT ═════════════════════════════════════════════════════ -->
+<div id="coachSelectView" class="view fill-center hidden">
+  <div class="center-card">
+    <p class="card-eyebrow">Area Coach</p>
+    <h2 class="card-title">Select your name</h2>
+    <div class="field" style="margin:20px 0 12px;">
+      <label for="coachLoginSelect">Your Name</label>
+      <select id="coachLoginSelect">
+        <option value="">— Select your name —</option>
+      </select>
+    </div>
+    <button class="btn-primary btn-full" id="coachLoginBtn" disabled>Continue →</button>
+    <p class="hint-text">Don't see your name? Contact your HSO.</p>
+    <button class="btn-link" id="backFromCoachSelect">← Back</button>
+  </div>
+</div>
+
+<!-- ══ 5. COACH HOME ═══════════════════════════════════════════════════════ -->
+<div id="coachHomeView" class="view hidden">
+  <div class="dash-outer">
+    <div class="dash-container">
+
+      <!-- Welcome row -->
+      <div class="dash-welcome-row">
+        <div>
+          <p class="dash-eyebrow">Welcome back</p>
+          <h2 class="dash-name" id="coachWelcomeName"></h2>
+        </div>
+        <button class="btn-link" id="changeUserBtn">Change User</button>
+      </div>
+
+      <!-- Stats row -->
+      <div class="dash-stat-row">
+        <div class="dash-stat-card">
+          <div class="dsc-label">Last Score</div>
+          <div class="dsc-value" id="dashLastScore">—</div>
+          <div class="dsc-sub" id="dashLastPeriod">No entries yet</div>
+          <div class="dsc-chip" id="dashLastChip"></div>
+        </div>
+        <div class="dash-stat-card dash-stat-card--best">
+          <div class="dsc-label">Personal Best</div>
+          <div class="dsc-value" id="dashBestScore">—</div>
+          <div class="dsc-sub" id="dashBestPeriod">—</div>
+        </div>
+        <div class="dash-stat-card">
+          <div class="dsc-label">Periods Tracked</div>
+          <div class="dsc-value" id="dashPeriodCount">0</div>
+          <div class="dsc-sub">scorecards</div>
+        </div>
+      </div>
+
+      <!-- Sparkline + Insights -->
+      <div class="dash-mid-row">
+        <div class="dash-sparkline-card">
+          <div class="dash-spark-header">
+            <span class="dash-section-label">Score Trend</span>
+            <span class="dash-spark-range" id="dashSparkRange"></span>
+          </div>
+          <div id="dashSparklineWrap" class="dash-sparkline-wrap"></div>
+          <div class="dash-sparkline-empty hidden" id="dashSparkEmpty">No history yet — generate your first scorecard.</div>
+        </div>
+        <div class="dash-insights-col">
+          <div class="dash-insight-card dash-insight--watch">
+            <div class="dash-insight-title">Areas to Watch</div>
+            <div id="dashWatchList" class="dash-insight-list"></div>
+          </div>
+          <div class="dash-insight-card dash-insight--strong">
+            <div class="dash-insight-title">Strengths</div>
+            <div id="dashStrengthList" class="dash-insight-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="dash-action-row">
+        <button class="dash-action-btn" id="goDataEntryBtn">
+          <span class="dab-icon">📊</span>
+          <div class="dab-body">
+            <div class="dab-label">Data Entry</div>
+            <div class="dab-desc">Enter KPI data for a period</div>
+          </div>
+          <span class="dab-arrow">→</span>
+        </button>
+        <button class="dash-action-btn dash-action-btn--alt" id="goPastEntriesBtn">
+          <span class="dab-icon">📋</span>
+          <div class="dab-body">
+            <div class="dab-label">Past Entries</div>
+            <div class="dab-desc">View your scorecard history</div>
+          </div>
+          <span class="dab-arrow">→</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══ 6. DATA ENTRY ═══════════════════════════════════════════════════════ -->
+<div id="manualEntryView" class="view hidden">
+  <div class="sub-header">
+    <button class="btn-back" id="backFromEntry">← Back</button>
+    <nav class="breadcrumb" id="entryBreadcrumb"></nav>
+  </div>
+  <div class="cockpit-layout">
+
+    <!-- ── Sidebar ────────────────────────────────────────────────────── -->
+    <aside class="cockpit-sidebar">
+
+      <div class="sidebar-block">
+        <label class="sidebar-field-label" for="entryPeriod">Period</label>
+        <input type="month" id="entryPeriod" />
+        <div id="overwriteWarn" class="overwrite-warn hidden">
+          <strong id="overwritePeriod">—</strong> already has a scorecard — saving will overwrite it.
+        </div>
+        <button class="btn-carry-forward hidden" id="carryForwardBtn">↩ Pre-fill from last period</button>
+      </div>
+
+      <div class="sidebar-block sidebar-ring-block hidden" id="sidebarScoreSection">
+        <div class="sidebar-ring-label">Projected Score</div>
+        <div class="sidebar-ring-wrap">
+          <svg class="score-ring-svg sidebar-ring-svg" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="49" class="ring-track"/>
+            <circle cx="60" cy="60" r="49" class="ring-progress" id="sidebarRingFill"/>
+          </svg>
+          <div class="ring-inner">
+            <div class="sidebar-ring-num" id="sidebarScoreNum">0.0</div>
+            <div class="ring-denom">/ 100</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-pillars hidden" id="sidebarPillars"></div>
+
+      <div class="sidebar-block sidebar-cta">
+        <button class="btn-primary btn-full" id="generateBtn">Generate &amp; Save →</button>
+        <div class="method-toggle sidebar-method-toggle">
+          <button class="method-btn active" data-method="manual">Manual</button>
+          <button class="method-btn" data-method="sheets">Sheets Import</button>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ── Main Content ──────────────────────────────────────────────── -->
+    <main class="cockpit-main">
+      <div id="manualSection">
+        <div id="manualKpiForm"></div>
+      </div>
+      <div id="sheetsSection" class="hidden">
+        <div class="kpi-card">
+          <div id="sheetsContent"></div>
+        </div>
+      </div>
+    </main>
+
+  </div>
+</div>
+
+<!-- ══ 7. PAST ENTRIES ════════════════════════════════════════════════════ -->
+<div id="pastEntriesView" class="view hidden">
+  <div class="sub-header">
+    <button class="btn-back" id="backFromPast">← Back</button>
+    <nav class="breadcrumb" id="pastBreadcrumb"></nav>
+  </div>
+  <div class="container">
+    <div id="pastEntriesList"></div>
+  </div>
+</div>
+
+<!-- ══ 8. RESULTS ══════════════════════════════════════════════════════════ -->
+<div id="resultsView" class="view hidden">
+  <div class="sub-header no-print">
+    <button class="btn-back" id="backFromResults">← Back</button>
+    <div class="period-nav">
+      <button class="period-nav-btn" id="periodPrev" title="Previous period">&#8249;</button>
+      <span class="sub-title" id="resultsNavLabel">Scorecard Result</span>
+      <button class="period-nav-btn" id="periodNext" title="Next period">&#8250;</button>
+    </div>
+    <div class="sub-header-right">
+      <button class="btn-secondary" id="exportCsvBtn">Export CSV</button>
+      <button class="btn-primary" id="printBtn">Print / PDF</button>
+    </div>
+  </div>
+  <div class="container">
+
+    <!-- Hero: meta + score ring -->
+    <div class="results-hero">
+      <div class="results-meta">
+        <h2 class="results-meta-eyebrow">Area Coach Performance Scorecard</h2>
+        <div class="meta-row">
+          <div class="meta-item"><span>Area Coach</span><strong id="res-name"></strong></div>
+          <div class="meta-item"><span>Period</span><strong id="res-period"></strong></div>
+          <div class="meta-item"><span>Branches</span><strong id="res-branches"></strong></div>
+        </div>
+        <div class="results-badges-row">
+          <span id="ratingBadge" class="results-rating-badge">—</span>
+          <span id="scoreDelta" class="score-delta hidden"></span>
+          <span id="personalBest" class="personal-best hidden">🏆 Personal Best</span>
+        </div>
+      </div>
+      <div class="score-ring-wrap">
+        <svg class="score-ring-svg" viewBox="0 0 160 160">
+          <circle cx="80" cy="80" r="66" class="ring-track"/>
+          <circle cx="80" cy="80" r="66" class="ring-progress" id="scoreRingFill"/>
+        </svg>
+        <div class="ring-inner">
+          <div class="ring-num" id="totalScore">0.0</div>
+          <div class="ring-denom">/ 100</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rating scale -->
+    <div class="rating-scale">
+      <h4>Performance Rating Scale</h4>
+      <div class="scale-grid">
+        <div class="scale-item" style="background:#1b5e20"><div class="range">90–100</div><div class="rlabel">Outstanding</div></div>
+        <div class="scale-item" style="background:#2e7d32"><div class="range">80–89</div><div class="rlabel">Strong Performer</div></div>
+        <div class="scale-item" style="background:#f57f17"><div class="range">70–79</div><div class="rlabel">Solid</div></div>
+        <div class="scale-item" style="background:#e65100"><div class="range">60–69</div><div class="rlabel">Needs Improvement</div></div>
+        <div class="scale-item" style="background:#b71c1c"><div class="range">&lt;60</div><div class="rlabel">Underperforming</div></div>
+      </div>
+    </div>
+
+    <!-- Auto-generated narrative -->
+    <div id="scoreNarrative" class="score-narrative hidden"></div>
+
+    <!-- Pillar performance grid -->
+    <div class="results-section-header">
+      <h3 class="results-section-title">Performance by Pillar</h3>
+    </div>
+    <div class="pillar-results-grid" id="pillarResultsGrid"></div>
+
+    <!-- Full breakdown — collapsible -->
+    <details class="breakdown-details">
+      <summary class="breakdown-summary">
+        <span>Full KPI Breakdown</span>
+        <span class="breakdown-chevron">&#9662;</span>
+      </summary>
+      <div class="table-card" style="margin-top:12px;border-radius:0 0 var(--radius) var(--radius);">
+        <table id="scoreTable">
+          <thead>
+            <tr>
+              <th>Performance Pillar</th>
+              <th>KPI</th>
+              <th class="center">Max</th>
+              <th class="center">Achieved</th>
+              <th class="center">Score</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4" style="text-align:right;padding-right:24px;">TOTAL SCORE</td>
+              <td class="center score-cell" style="font-size:1.15rem" id="totalScoreFooter"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </details>
+
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script src="sheets.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
