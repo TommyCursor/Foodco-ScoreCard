@@ -2271,42 +2271,219 @@ tfoot .score-cell {
   .breakdown-details[open] .breakdown-summary { display: none; }
 }
 
-/* ── Responsive ─────────────────────────────────────────────────────────── */
+/* ══ RESPONSIVE ══════════════════════════════════════════════════════════════ */
+
+/* Improve tap targets and scroll behaviour globally on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  button, a, select, input[type="month"] { touch-action: manipulation; }
+  html { -webkit-tap-highlight-color: transparent; }
+}
+
+/* ── Tablet  ≤ 768px ─────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .dash-mid-row           { grid-template-columns: 1fr; }
+  .pillar-results-grid    { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .cockpit-layout         { flex-direction: column; }
+  .cockpit-sidebar {
+    position: static; width: 100%;
+    border-right: none; border-bottom: 1px solid var(--border);
+    min-height: 0; max-height: none; overflow-y: visible; top: 0;
+  }
+  .sidebar-cta { margin-top: 0; }
+  .cockpit-main { padding: 20px 20px 80px; }
+  .meta-row { gap: 18px; }
+  .lb-wrap  { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .lb-table { min-width: 460px; }
+  .heatmap-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* ── Mobile  ≤ 640px ─────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .role-grid, .choice-grid        { grid-template-columns: 1fr; }
-  .scale-grid                     { grid-template-columns: 1fr 1fr; }
-  .field-row                      { grid-template-columns: 1fr; }
-  .header-grid                    { grid-template-columns: 1fr; }
-  .results-hero                   { flex-direction: column; align-items: flex-start; padding: 24px 22px; }
-  .score-ring-wrap                { align-self: center; }
-  header                          { padding: 0 16px; }
-  .center-card                    { padding: 32px 24px; }
-  .sub-header                     { padding: 0 16px; gap: 8px; }
-  .sub-header-right               { gap: 6px; }
-  .sub-header-right .btn-secondary{ display: none; }
-  .container                      { padding: 0 14px 56px; }
-  .hero-brand                     { flex-direction: column; text-align: center; gap: 14px; }
-  .hero-brand-text                { text-align: center; }
-  .hero-title                     { font-size: 1.9rem; }
-  .hero-stats                     { padding: 8px 12px; }
-  .hero-stat                      { padding: 0 12px; }
-  .hero-stat-num                  { font-size: 1.1rem; }
-  .carousel-track                 { height: 100px; }
-  .carousel-desc                  { white-space: normal; }
-  /* Dashboard */
-  .dash-stat-row                  { grid-template-columns: 1fr 1fr; }
-  .dash-stat-card:last-child      { grid-column: 1/-1; }
-  .dash-mid-row                   { grid-template-columns: 1fr; }
-  .dash-action-row                { grid-template-columns: 1fr; }
-  .dash-name                      { font-size: 1.6rem; }
-  /* Pillar cards */
-  .pillar-results-grid            { grid-template-columns: 1fr 1fr; }
-  /* Cockpit */
-  .cockpit-layout                 { flex-direction: column; }
-  .cockpit-sidebar                { position: static; width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
-  /* Timeline */
-  .tl-entry                       { gap: 10px; flex-wrap: wrap; }
-  .tl-date-col                    { flex: 1 1 100%; }
+
+  /* ── Global ── */
+  .container { padding: 0 16px 88px; }
+  .hidden-mobile { display: none !important; }
+
+  /* ── Header ── */
+  header { padding: 0 16px; height: 56px; gap: 12px; }
+  .header-main h1 { font-size: 0.84rem; }
+  .header-main p  { display: none; }
+  .header-logo-img { width: 30px; height: 30px; }
+  .logo-mark       { width: 30px; height: 30px; }
+
+  /* ── Sub-header ── */
+  .sub-header { padding: 0 14px; height: auto; min-height: 48px; gap: 8px; flex-wrap: wrap; }
+  .sub-header-right { gap: 6px; }
+  .sub-header-right .btn-secondary { display: none; }
+  .period-nav { flex: 1; justify-content: center; }
+  .sub-title  { font-size: 0.82rem; }
+  .btn-back   { font-size: 0.78rem; white-space: nowrap; }
+
+  /* ── Admin tabs — horizontal scroll ── */
+  .mini-tab-bar {
+    display: block; padding: 0; overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none; white-space: nowrap;
+  }
+  .mini-tab-bar::-webkit-scrollbar { display: none; }
+  .mini-tab {
+    display: inline-block; padding: 14px 18px;
+    font-size: 0.82rem; min-height: 48px; line-height: 20px;
+  }
+
+  /* ── Center cards ── */
+  .fill-center      { padding: 24px 16px; align-items: flex-start; }
+  .center-card      { padding: 32px 22px; border-radius: 20px; max-width: 100%; }
+  .center-card--narrow { max-width: 100%; }
+  .card-title       { font-size: 1.35rem; }
+
+  /* ── Forms & inputs ── */
+  .field-row  { grid-template-columns: 1fr; gap: 12px; }
+  .header-grid { grid-template-columns: 1fr; }
+  input[type="number"],
+  input[type="text"],
+  input[type="month"],
+  input[type="password"],
+  select { min-height: 44px; font-size: 1rem; padding: 10px 14px; }
+  .btn-primary, .btn-secondary { min-height: 44px; padding: 12px 22px; font-size: 0.88rem; }
+  .btn-ghost  { min-height: 40px; }
+  .method-btn { min-height: 42px; }
+  .lb-view-btn { min-height: 42px; }
+
+  /* ── Hero ── */
+  .view--hero { padding: 36px 18px 48px; }
+  .hero-content { max-width: 100%; }
+  .hero-eyebrow { font-size: 0.58rem; letter-spacing: .13em; }
+  .hero-brand { flex-direction: column; align-items: center; gap: 14px; margin-bottom: 22px; }
+  .hero-brand-text { text-align: center; }
+  .hero-title { font-size: 1.95rem; letter-spacing: -.055em; }
+  .hero-subtitle { font-size: 0.63rem; }
+  .hero-logo-mark, .hero-logo-img { width: 58px; height: 58px; }
+  .hero-stats { padding: 8px 10px; margin-bottom: 18px; }
+  .hero-stat  { padding: 0 9px; }
+  .hero-stat-num   { font-size: 1rem; }
+  .hero-stat-label { font-size: 0.48rem; }
+  .hero-stat-sep   { height: 20px; }
+  .hero-select-label { font-size: 0.63rem; }
+  .role-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .view--hero .role-btn  { padding: 18px 10px; gap: 6px; border-radius: 14px; }
+  .view--hero .role-icon { font-size: 1.55rem; }
+  .view--hero .role-label { font-size: 0.78rem; }
+  .view--hero .role-desc  { font-size: 0.63rem; }
+  .carousel-track { height: 96px; }
+  .carousel-slide { gap: 10px; padding: 12px 14px; }
+  .carousel-icon-wrap { width: 38px; height: 38px; font-size: 1.2rem; border-radius: 10px; flex-shrink: 0; }
+  .carousel-title { font-size: 0.82rem; }
+  .carousel-desc  { white-space: normal; font-size: 0.66rem; }
+
+  /* ── Coach Dashboard ── */
+  .dash-outer { padding: 18px 16px 88px; }
+  .dash-name  { font-size: 1.55rem; }
+  .dash-eyebrow { font-size: 0.58rem; }
+  .dash-stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .dash-stat-card { padding: 16px 14px; }
+  .dash-stat-card:last-child { grid-column: 1 / -1; }
+  .dsc-value { font-size: 1.75rem; }
+  .dash-mid-row { grid-template-columns: 1fr; gap: 10px; }
+  .dash-action-row { grid-template-columns: 1fr; gap: 10px; }
+  .dash-action-btn { padding: 16px 18px; min-height: 64px; }
+  .dash-sparkline-card { padding: 16px 16px; }
+  .dash-insight-card   { padding: 13px 14px; }
+
+  /* ── Data Entry (cockpit) ── */
+  .cockpit-layout { flex-direction: column; }
+  .cockpit-sidebar {
+    position: static; width: 100%;
+    border-right: none; border-bottom: 1px solid var(--border);
+    min-height: 0; max-height: none; overflow-y: visible; top: 0;
+  }
+  .sidebar-block  { padding: 14px 16px; }
+  .sidebar-cta    { padding: 14px 16px; margin-top: 0; }
+  .sidebar-ring-block { flex-direction: row; align-items: center; gap: 16px; padding: 14px 16px; }
+  .sidebar-ring-label { align-self: center; }
+  .sidebar-pillars { padding: 12px 16px; }
+  .cockpit-main { padding: 16px 16px 88px; }
+  .kpi-card { padding: 16px 16px; }
+
+  /* ── Results view ── */
+  .results-hero {
+    flex-direction: column; align-items: flex-start;
+    padding: 22px 18px; gap: 18px;
+  }
+  .score-ring-wrap  { align-self: center; }
+  .results-meta-eyebrow { font-size: 0.62rem; margin-bottom: 10px; }
+  .meta-row { gap: 14px; flex-wrap: wrap; }
+  .results-badges-row { gap: 8px; flex-wrap: wrap; }
+
+  /* Rating scale: 3 + 2 layout */
+  .scale-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .scale-item { padding: 8px 6px; border-radius: 8px; }
+  .range      { font-size: 0.64rem; }
+  .rlabel     { font-size: 0.54rem; }
+
+  /* Pillar results: 2 cols */
+  .pillar-results-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .prc-score { font-size: 1.4rem; }
+  .prc-kpi   { font-size: 0.75rem; min-height: 0; }
+
+  /* Score table: horizontal scroll */
+  .table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); }
+  table { min-width: 480px; }
+  th, td { padding: 11px 12px; font-size: 0.82rem; }
+
+  /* Breakdown */
+  .breakdown-summary { padding: 12px 16px; font-size: 0.8rem; }
+
+  /* Score narrative */
+  .score-narrative { font-size: 0.82rem; padding: 14px 16px; }
+
+  /* ── Past Entries / Timeline ── */
+  .tl-list  { padding-bottom: 80px; }
+  .tl-entry { gap: 10px; padding: 14px 16px; }
+  .tl-score { font-size: 1.4rem; }
+  .tl-pillar-dots { display: none; }
+  .tl-chip-col { gap: 4px; }
+
+  /* ── Admin — coach cards ── */
+  .coach-card {
+    flex-direction: column; align-items: flex-start;
+    gap: 10px; padding: 14px 16px;
+  }
+  .coach-actions { width: 100%; gap: 8px; }
+  .coach-actions .btn-ghost { flex: 1; text-align: center; min-height: 40px; }
+
+  /* ── Leaderboard ── */
+  .lb-wrap  { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .lb-table { min-width: 440px; }
+  .lb-view-toggle { gap: 6px; }
+
+  /* ── Heatmap ── */
+  .heatmap-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* ── Toast ── */
+  .toast {
+    bottom: 20px; left: 16px; right: 16px;
+    transform: translateX(0) translateY(80px);
+    max-width: none; white-space: normal;
+    text-align: center; font-size: 0.8rem; padding: 11px 20px;
+  }
+  .toast.show { transform: translateX(0) translateY(0); }
+
+  /* ── KPI Bands ── */
+  .kpi-band-threshold { width: 90px; font-size: 0.64rem; }
+}
+
+/* ── Very small phones  ≤ 380px ──────────────────────────────────────────── */
+@media (max-width: 380px) {
+  .hero-title    { font-size: 1.7rem; }
+  .hero-stats    { display: none; }
+  .role-grid     { grid-template-columns: 1fr; gap: 8px; }
+  .dash-stat-row { grid-template-columns: 1fr; }
+  .dash-stat-card:last-child { grid-column: auto; }
+  .pillar-results-grid { grid-template-columns: 1fr; }
+  .scale-grid    { grid-template-columns: 1fr 1fr; }
+  .center-card   { padding: 28px 18px; }
+  .kpi-card      { padding: 14px 14px; }
+  table          { min-width: 420px; }
 }
 
 /* ══ COCKPIT LAYOUT ══════════════════════════════════════════════════════════ */
