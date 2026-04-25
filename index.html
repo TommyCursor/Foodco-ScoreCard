@@ -137,13 +137,25 @@
     <span class="sub-title">Admin Panel</span>
     <button class="btn-ghost" id="exitAdminBtn">Exit Admin</button>
   </div>
-  <nav class="mini-tab-bar">
-    <button class="mini-tab active" data-atab="aCoaches">Coaches</button>
-    <button class="mini-tab" data-atab="aSettings">Settings</button>
-    <button class="mini-tab" data-atab="aLeaderboard">Leaderboard</button>
-    <button class="mini-tab" data-atab="aScores">All Scorecards</button>
-  </nav>
-  <div class="container">
+  <div class="admin-layout">
+    <nav class="admin-sidebar-nav">
+      <button class="admin-nav-item active" data-atab="aCoaches">
+        <span class="ani-icon">👥</span><span class="ani-label">Coaches</span>
+      </button>
+      <button class="admin-nav-item" data-atab="aLeaderboard">
+        <span class="ani-icon">🏆</span><span class="ani-label">Leaderboard</span>
+      </button>
+      <button class="admin-nav-item" data-atab="aScores">
+        <span class="ani-icon">📋</span><span class="ani-label">All Scorecards</span>
+      </button>
+      <button class="admin-nav-item" data-atab="aQuarterly">
+        <span class="ani-icon">📊</span><span class="ani-label">Quarterly Report</span>
+      </button>
+      <button class="admin-nav-item" data-atab="aSettings">
+        <span class="ani-icon">⚙️</span><span class="ani-label">Settings</span>
+      </button>
+    </nav>
+    <div class="admin-content container">
 
     <!-- Coaches tab -->
     <div id="aCoaches" class="atab-panel">
@@ -210,6 +222,47 @@
           <button class="btn-secondary" id="downloadTemplateBtn" style="font-size:0.82rem;padding:9px 20px;">⬇ Download Data Template (CSV)</button>
         </div>
       </div>
+
+      <!-- AI Configuration -->
+      <div class="kpi-card">
+        <h3 class="section-label">AI Insights</h3>
+        <p style="font-size:0.82rem;color:var(--s-500);margin-bottom:14px;line-height:1.5;">
+          Add your Groq API key to enable the AI assistant. Get a free key at
+          <a href="https://console.groq.com/keys" target="_blank" rel="noopener" class="ext-link">console.groq.com</a>.
+          The key is stored in this browser only — never sent to any third-party server.
+        </p>
+        <div class="field-row">
+          <div class="field">
+            <label for="aiApiKeyInput">Groq API Key</label>
+            <input type="password" id="aiApiKeyInput" placeholder="gsk_…" autocomplete="off" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-primary" id="saveAiKeyBtn">Save Key</button>
+          <button type="button" class="btn-ghost" id="clearAiKeyBtn">Remove Key</button>
+        </div>
+      </div>
+
+      <!-- Governance -->
+      <div class="kpi-card governance-card">
+        <h3 class="section-label">Governance Structure</h3>
+        <div class="gov-grid">
+          <div class="gov-item">
+            <div class="gov-icon">📅</div>
+            <div class="gov-body">
+              <div class="gov-title">Monthly Tracking</div>
+              <div class="gov-desc">Area Coaches submit KPI data every month via this platform.</div>
+            </div>
+          </div>
+          <div class="gov-item">
+            <div class="gov-icon">📋</div>
+            <div class="gov-body">
+              <div class="gov-title">Quarterly Formal Review</div>
+              <div class="gov-desc">HSO conducts a formal performance review every quarter using cumulative scorecard data.</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Leaderboard tab -->
@@ -227,7 +280,38 @@
       <div id="allScorecardsList"></div>
     </div>
 
-  </div>
+    <!-- Quarterly Report tab -->
+    <div id="aQuarterly" class="atab-panel hidden">
+      <div class="kpi-card">
+        <h3 class="section-label">Generate Quarterly Report</h3>
+        <div class="field-row">
+          <div class="field">
+            <label for="qrCoachSelect">Coach</label>
+            <select id="qrCoachSelect"><option value="">— Select coach —</option></select>
+          </div>
+          <div class="field">
+            <label for="qrYearSelect">Year</label>
+            <select id="qrYearSelect"></select>
+          </div>
+          <div class="field">
+            <label for="qrQuarterSelect">Quarter</label>
+            <select id="qrQuarterSelect">
+              <option value="1">Q1 — Jan, Feb, Mar</option>
+              <option value="2">Q2 — Apr, May, Jun</option>
+              <option value="3">Q3 — Jul, Aug, Sep</option>
+              <option value="4">Q4 — Oct, Nov, Dec</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" id="qrGenerateBtn">Generate Report</button>
+        </div>
+      </div>
+      <div id="quarterlyReportContent"></div>
+    </div>
+
+    </div><!-- /.admin-content -->
+  </div><!-- /.admin-layout -->
 </div>
 
 <!-- ══ 4. COACH SELECT ═════════════════════════════════════════════════════ -->
@@ -260,6 +344,9 @@
         </div>
         <button class="btn-link" id="changeUserBtn">Change User</button>
       </div>
+
+      <!-- Submission status -->
+      <div id="dashSubmissionStatus"></div>
 
       <!-- Stats row -->
       <div class="dash-stat-row">
@@ -321,6 +408,14 @@
           </div>
           <span class="dab-arrow">→</span>
         </button>
+        <button class="dash-action-btn dash-action-btn--rank" id="goCoachLeaderboardBtn">
+          <span class="dab-icon">🏆</span>
+          <div class="dab-body">
+            <div class="dab-label">My Ranking</div>
+            <div class="dab-desc">See where you stand</div>
+          </div>
+          <span class="dab-arrow">→</span>
+        </button>
       </div>
 
     </div>
@@ -345,6 +440,9 @@
           <strong id="overwritePeriod">—</strong> already has a scorecard — saving will overwrite it.
         </div>
         <button class="btn-carry-forward hidden" id="carryForwardBtn">↩ Pre-fill from last period</button>
+        <div class="sidebar-governance-note">
+          <span class="gov-dot"></span> Monthly tracking &nbsp;·&nbsp; Quarterly HSO review
+        </div>
       </div>
 
       <div class="sidebar-block sidebar-ring-block hidden" id="sidebarScoreSection">
@@ -413,9 +511,16 @@
       <button class="btn-primary" id="printBtn">Print / PDF</button>
     </div>
   </div>
+
+  <!-- Results tabs -->
+  <div class="results-tab-bar no-print">
+    <button class="results-tab-btn active" data-rtab="overview" onclick="switchResultsTab('overview')">Overview</button>
+    <button class="results-tab-btn" data-rtab="review" onclick="switchResultsTab('review')">Review &amp; Notes</button>
+  </div>
+
   <div class="container">
 
-    <!-- Hero: meta + score ring -->
+    <!-- Hero: meta + score ring (always visible) -->
     <div class="results-hero">
       <div class="results-meta">
         <h2 class="results-meta-eyebrow">Area Coach Performance Scorecard</h2>
@@ -442,34 +547,40 @@
       </div>
     </div>
 
-    <!-- Rating scale -->
-    <div class="rating-scale">
-      <h4>Performance Rating Scale</h4>
-      <div class="scale-grid">
-        <div class="scale-item" style="background:#1b5e20"><div class="range">90–100</div><div class="rlabel">Outstanding</div></div>
-        <div class="scale-item" style="background:#2e7d32"><div class="range">80–89</div><div class="rlabel">Strong Performer</div></div>
-        <div class="scale-item" style="background:#f57f17"><div class="range">70–79</div><div class="rlabel">Solid</div></div>
-        <div class="scale-item" style="background:#e65100"><div class="range">60–69</div><div class="rlabel">Needs Improvement</div></div>
-        <div class="scale-item" style="background:#b71c1c"><div class="range">&lt;60</div><div class="rlabel">Underperforming</div></div>
+    <!-- ── Overview tab ───────────────────────────────────────────────────── -->
+    <div id="resultsTabOverview">
+
+      <!-- Rating scale -->
+      <div class="rating-scale">
+        <h4>Performance Rating Scale</h4>
+        <div class="scale-grid">
+          <div class="scale-item" style="background:#1b5e20"><div class="range">90–100</div><div class="rlabel">Outstanding</div></div>
+          <div class="scale-item" style="background:#2e7d32"><div class="range">80–89</div><div class="rlabel">Strong Performer</div></div>
+          <div class="scale-item" style="background:#f57f17"><div class="range">70–79</div><div class="rlabel">Solid</div></div>
+          <div class="scale-item" style="background:#e65100"><div class="range">60–69</div><div class="rlabel">Needs Improvement</div></div>
+          <div class="scale-item" style="background:#b71c1c"><div class="range">&lt;60</div><div class="rlabel">Underperforming</div></div>
+        </div>
       </div>
-    </div>
 
-    <!-- Auto-generated narrative -->
-    <div id="scoreNarrative" class="score-narrative hidden"></div>
+      <!-- Auto-generated narrative + coach note -->
+      <div id="scoreNarrative" class="score-narrative hidden"></div>
 
-    <!-- Pillar performance grid -->
-    <div class="results-section-header">
-      <h3 class="results-section-title">Performance by Pillar</h3>
-    </div>
-    <div class="pillar-results-grid" id="pillarResultsGrid"></div>
+      <!-- Pillar performance grid (with inline delta chips) -->
+      <div class="results-section-header">
+        <h3 class="results-section-title">Performance by Pillar</h3>
+      </div>
+      <div class="pillar-results-grid" id="pillarResultsGrid"></div>
 
-    <!-- Full breakdown — collapsible -->
-    <details class="breakdown-details">
-      <summary class="breakdown-summary">
-        <span>Full KPI Breakdown</span>
-        <span class="breakdown-chevron">&#9662;</span>
-      </summary>
-      <div class="table-card" style="margin-top:12px;border-radius:0 0 var(--radius) var(--radius);">
+    </div><!-- /#resultsTabOverview -->
+
+    <!-- ── Review & Notes tab ─────────────────────────────────────────────── -->
+    <div id="resultsTabReview" class="hidden">
+
+      <!-- Full breakdown -->
+      <div class="results-section-header" style="margin-top:8px;">
+        <h3 class="results-section-title">Full KPI Breakdown</h3>
+      </div>
+      <div class="table-card">
         <table id="scoreTable">
           <thead>
             <tr>
@@ -489,13 +600,58 @@
           </tfoot>
         </table>
       </div>
-    </details>
 
+      <!-- Coaching Notes (HSO) -->
+      <div id="coachingNotesSection" class="no-print"></div>
+
+    </div><!-- /#resultsTabReview -->
+
+  </div>
+</div>
+
+<!-- ══ 9. COACH LEADERBOARD ═════════════════════════════════════════════════ -->
+<div id="coachLeaderboardView" class="view hidden">
+  <div class="sub-header">
+    <button class="btn-back" id="backFromCoachLb">← Back</button>
+    <nav class="breadcrumb" id="coachLbBreadcrumb"></nav>
+  </div>
+  <div class="container">
+    <div id="coachLeaderboardList"></div>
   </div>
 </div>
 
 <!-- Toast -->
 <div id="toast" class="toast"></div>
+
+<!-- ══ AI CHAT PANEL ═══════════════════════════════════════════════════════ -->
+<div id="aiChatPanel" class="ai-panel ai-panel--closed" aria-label="AI Insights" role="dialog">
+  <div class="ai-panel-header">
+    <div class="ai-panel-title">
+      <span class="ai-panel-icon">✨</span>
+      <span>AI Insights</span>
+    </div>
+    <button class="ai-panel-close" onclick="toggleAIPanel()" aria-label="Close AI panel">✕</button>
+  </div>
+  <div class="ai-messages" id="aiMessages"></div>
+  <div class="ai-input-wrap">
+    <div class="ai-suggestions" id="aiSuggestions">
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">Who is the top performer?</button>
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">Which KPI needs most attention?</button>
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">Who is at risk of underperforming?</button>
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">Summarise all coach scores</button>
+    </div>
+    <div class="ai-input-row" id="aiInputRow">
+      <textarea id="aiQuestionInput" class="ai-textarea"
+                placeholder="Ask anything about your scorecard data…" rows="1"></textarea>
+      <button class="ai-send-btn" id="aiSendBtn" onclick="submitAIQuestion()" aria-label="Send">↑</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ AI FLOATING BUTTON ══════════════════════════════════════════════════ -->
+<button class="ai-fab" id="aiFab" onclick="toggleAIPanel()" title="AI Insights" aria-label="Open AI Insights">
+  <span class="ai-fab-icon">AI</span>
+</button>
 
 <script src="sheets.js"></script>
 <script src="app.js"></script>

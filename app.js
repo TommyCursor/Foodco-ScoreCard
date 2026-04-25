@@ -1,3 +1,19 @@
+// ── Status colour palette (single source of truth) ────────────────────────
+const SC = {
+  great : { text: '#166534', bar: '#16a34a' },
+  good  : { text: '#15803d', bar: '#22c55e' },
+  fair  : { text: '#92400e', bar: '#f59e0b' },
+  low   : { text: '#c2410c', bar: '#f97316' },
+  poor  : { text: '#991b1b', bar: '#ef4444' },
+};
+function statusColor(ratio) {
+  if (ratio >= .95) return SC.great;
+  if (ratio >= .80) return SC.good;
+  if (ratio >= .65) return SC.fair;
+  if (ratio >= .50) return SC.low;
+  return SC.poor;
+}
+
 // ── KPI Configuration ─────────────────────────────────────────────────────
 
 const KPI_CONFIG = [
@@ -5,6 +21,7 @@ const KPI_CONFIG = [
     id: 'sales', pillar: 'Commercial Performance',
     label: '1. Sales Performance vs Target', pts: 25,
     formula: 'Actual Sales ÷ Target Sales × 100',
+    dataSource: 'Monthly financial dashboard',
     fields: [
       { id: 'actualSales', label: 'Actual Sales (R)',  placeholder: '0.00' },
       { id: 'targetSales', label: 'Target Sales (R)',  placeholder: '0.00', min: 1 }
@@ -13,11 +30,11 @@ const KPI_CONFIG = [
     score:   p => p >= 100 ? 25 : p >= 95 ? 23 : p >= 90 ? 20 : p >= 85 ? 10 : 5,
     display: v => `${v.toFixed(1)}%`,
     bands: [
-      { label: '≥ 100%', score: 25 },
-      { label: '≥  95%', score: 23 },
-      { label: '≥  90%', score: 20 },
-      { label: '≥  85%', score: 10 },
-      { label: ' < 85%', score:  5 }
+      { label: '100% +',  score: 25 },
+      { label: '95–99%',  score: 23 },
+      { label: '90–94%',  score: 20 },
+      { label: '85–89%',  score: 10 },
+      { label: '< 85%',   score:  5 }
     ],
     validate: d => {
       if (d.targetSales > 0 && d.actualSales / d.targetSales > 1.5) return 'Actual exceeds 150% of target — verify values.';
@@ -29,6 +46,8 @@ const KPI_CONFIG = [
     id: 'stock', pillar: 'Stock Discipline',
     label: '2. Stock Availability', pts: 25,
     formula: 'Available SKUs ÷ Total Required SKUs × 100',
+    dataSource: 'Supermarket & 3F Operations inventory',
+    includes: ['Diamond Lines', 'Silver Lines', '3F Critical SKUs'],
     fields: [
       { id: 'availSKU', label: 'Available SKUs',      placeholder: '0', step: '1' },
       { id: 'totalSKU', label: 'Total Required SKUs', placeholder: '0', step: '1', min: 1 }
@@ -37,11 +56,11 @@ const KPI_CONFIG = [
     score:   p => p >= 95 ? 25 : p >= 92 ? 23 : p >= 88 ? 20 : p >= 85 ? 15 : 5,
     display: v => `${v.toFixed(1)}%`,
     bands: [
-      { label: '≥  95%', score: 25 },
-      { label: '≥  92%', score: 23 },
-      { label: '≥  88%', score: 20 },
-      { label: '≥  85%', score: 15 },
-      { label: ' < 85%', score:  5 }
+      { label: '95–100%', score: 25 },
+      { label: '92–94%',  score: 23 },
+      { label: '88–91%',  score: 20 },
+      { label: '85–87%',  score: 15 },
+      { label: '< 85%',   score:  5 }
     ],
     validate: d => {
       if (d.availSKU > d.totalSKU) return 'Available SKUs exceed total required — check values.';
@@ -50,7 +69,7 @@ const KPI_CONFIG = [
   },
   {
     id: 'yoy', pillar: 'Growth Performance',
-    label: '3. Year-on-Year Sales Growth', pts: 10,
+    label: '3. Year-on-Year Growth', pts: 10,
     formula: '(Current Year Sales – Previous Year Sales) ÷ Previous Year Sales × 100',
     fields: [
       { id: 'currYearSales', label: 'Current Year Sales (R)',  placeholder: '0.00' },
@@ -60,11 +79,11 @@ const KPI_CONFIG = [
     score:   p => p >= 15 ? 10 : p >= 10 ? 8 : p >= 5 ? 6 : p >= 0 ? 4 : 0,
     display: v => `${v.toFixed(1)}%`,
     bands: [
-      { label: '≥  15%', score: 10 },
-      { label: '≥  10%', score:  8 },
-      { label: '≥   5%', score:  6 },
-      { label: '≥   0%', score:  4 },
-      { label: '  < 0%', score:  0 }
+      { label: '15% +',            score: 10 },
+      { label: '10–14%',           score:  8 },
+      { label: '5–9%',             score:  6 },
+      { label: '0–4%',             score:  4 },
+      { label: 'Negative (< 0%)',  score:  0 }
     ],
     validate: d => {
       if (d.prevYearSales > 0 && Math.abs((d.currYearSales - d.prevYearSales) / d.prevYearSales) > 0.6)
@@ -81,11 +100,11 @@ const KPI_CONFIG = [
     score:   p => p >= 95 ? 10 : p >= 89 ? 8 : p >= 85 ? 6 : p >= 80 ? 4 : 2,
     display: v => `${v.toFixed(1)}%`,
     bands: [
-      { label: '≥  95%', score: 10 },
-      { label: '≥  89%', score:  8 },
-      { label: '≥  85%', score:  6 },
-      { label: '≥  80%', score:  4 },
-      { label: ' < 80%', score:  2 }
+      { label: '95% +',   score: 10 },
+      { label: '89–94%',  score:  8 },
+      { label: '85–88%',  score:  6 },
+      { label: '80–84%',  score:  4 },
+      { label: '≤ 79%',   score:  2 }
     ],
     validate: d => {
       if (d.auditScore > 100) return 'Score cannot exceed 100%.';
@@ -101,11 +120,11 @@ const KPI_CONFIG = [
     score:   p => p >= 95 ? 5 : p >= 90 ? 4 : p >= 85 ? 3 : p >= 80 ? 2 : 1,
     display: v => `${v.toFixed(1)}%`,
     bands: [
-      { label: '≥  95%', score: 5 },
-      { label: '≥  90%', score: 4 },
-      { label: '≥  85%', score: 3 },
-      { label: '≥  80%', score: 2 },
-      { label: ' < 80%', score: 1 }
+      { label: '≥ 95%',  score: 5 },
+      { label: '90–94%', score: 4 },
+      { label: '85–89%', score: 3 },
+      { label: '80–84%', score: 2 },
+      { label: '< 80%',  score: 1 }
     ],
     validate: d => {
       if (d.ghpScore > 100) return 'Score cannot exceed 100%.';
@@ -115,7 +134,7 @@ const KPI_CONFIG = [
   {
     id: 'manning', pillar: 'Workforce Productivity',
     label: '6. Manning Efficiency', pts: 5,
-    formula: 'Actual Staff ÷ Planned Staff × 100 (>101% = over-staffed penalty)',
+    formula: 'Actual Staff ÷ Planned Staff × 100',
     fields: [
       { id: 'actualStaff',  label: 'Actual Staff',  placeholder: '0', step: '1' },
       { id: 'plannedStaff', label: 'Planned Staff', placeholder: '0', step: '1', min: 1 }
@@ -124,12 +143,11 @@ const KPI_CONFIG = [
     score:   p => p > 101 ? 1 : p >= 95 ? 5 : p >= 90 ? 4 : p >= 85 ? 3 : p >= 80 ? 2 : 1,
     display: v => `${v.toFixed(1)}%`,
     bands: [
-      { label: '95–101%  (optimal)', score: 5 },
-      { label: '≥  90%',             score: 4 },
-      { label: '≥  85%',             score: 3 },
-      { label: '≥  80%',             score: 2 },
-      { label: '> 101%  (over)',      score: 1 },
-      { label: ' < 80%',             score: 1 }
+      { label: '95–100%',         score: 5 },
+      { label: '90–94%',          score: 4 },
+      { label: '85–89%',          score: 3 },
+      { label: '80–84%',          score: 2 },
+      { label: '< 80% or > 101%', score: 1 }
     ],
     validate: d => {
       if (d.plannedStaff > 0 && d.actualStaff / d.plannedStaff > 1.4)
@@ -140,16 +158,17 @@ const KPI_CONFIG = [
   {
     id: 'profit', pillar: 'Financial Health',
     label: '7. Profitability', pts: 7.5,
-    formula: 'Profit vs Target % (gross margin & shrinkage)',
+    formula: 'Profit vs Target %',
+    includes: ['Gross Margin', 'Shrinkage'],
     fields: [{ id: 'profitVsTarget', label: 'Profit vs Target (%)', placeholder: '0–120' }],
     compute: d => d.profitVsTarget,
     score:   p => p >= 100 ? 7.5 : p >= 95 ? 6 : p >= 90 ? 4 : 1,
     display: v => `${v.toFixed(1)}%`,
     bands: [
-      { label: '≥ 100%', score: 7.5 },
-      { label: '≥  95%', score: 6   },
-      { label: '≥  90%', score: 4   },
-      { label: ' < 90%', score: 1   }
+      { label: '100% +', score: 7.5 },
+      { label: '95–99%', score: 6   },
+      { label: '90–94%', score: 4   },
+      { label: '< 90%',  score: 1   }
     ],
     validate: d => {
       if (d.profitVsTarget > 160) return 'Profit vs target exceeds 160% — verify the value.';
@@ -159,7 +178,8 @@ const KPI_CONFIG = [
   {
     id: 'expense', pillar: 'Financial Discipline',
     label: '8. Expense Control', pts: 5,
-    formula: 'Actual Expense ÷ Budget × 100 — lower is better (diesel, utilities, repairs)',
+    formula: 'Actual Expense ÷ Budget (lower is better)',
+    includes: ['Diesel', 'Utilities', 'Repairs'],
     fields: [
       { id: 'actualExpense', label: 'Actual Expense (R)', placeholder: '0.00' },
       { id: 'expenseBudget', label: 'Expense Budget (R)', placeholder: '0.00', min: 1 }
@@ -168,11 +188,11 @@ const KPI_CONFIG = [
     score:   r => r <= 95 ? 5 : r <= 100 ? 4 : r <= 105 ? 3 : r <= 110 ? 2 : 1,
     display: v => `${v.toFixed(1)}% of budget`,
     bands: [
-      { label: '≤  95% of budget', score: 5 },
-      { label: '≤ 100% of budget', score: 4 },
-      { label: '≤ 105% of budget', score: 3 },
-      { label: '≤ 110% of budget', score: 2 },
-      { label: '> 110% of budget', score: 1 }
+      { label: '≤ 95%',    score: 5 },
+      { label: '96–100%',  score: 4 },
+      { label: '101–105%', score: 3 },
+      { label: '106–110%', score: 2 },
+      { label: '> 110%',   score: 1 }
     ],
     validate: d => {
       if (d.expenseBudget > 0 && d.actualExpense / d.expenseBudget > 2)
@@ -192,11 +212,11 @@ const KPI_CONFIG = [
     score:   n => n >= 70 ? 7.5 : n >= 60 ? 6 : n >= 50 ? 4 : n >= 40 ? 3 : 1,
     display: v => `NPS ${v.toFixed(1)}`,
     bands: [
-      { label: 'NPS ≥ 70', score: 7.5 },
-      { label: 'NPS ≥ 60', score: 6   },
-      { label: 'NPS ≥ 50', score: 4   },
-      { label: 'NPS ≥ 40', score: 3   },
-      { label: 'NPS < 40', score: 1   }
+      { label: 'NPS ≥ 70',    score: 7.5 },
+      { label: 'NPS 60–69',   score: 6   },
+      { label: 'NPS 50–59',   score: 4   },
+      { label: 'NPS 40–49',   score: 3   },
+      { label: 'NPS < 40',    score: 1   }
     ],
     validate: d => {
       if (d.promoters + d.detractors > 100) return 'Promoters + Detractors cannot exceed 100%.';
@@ -230,6 +250,7 @@ function uid() { return Math.random().toString(36).slice(2) + Date.now().toStrin
 // ── State ──────────────────────────────────────────────────────────────────
 
 let currentCoach = null;
+let isHSOMode = false;
 let resultsBackDest = 'coachHomeView';
 let currentResultScorecard = null;
 let currentCoachScorecards = [];
@@ -356,13 +377,19 @@ function renderMiniSparkline(scores) {
 
 // ── Pillar Result Cards ────────────────────────────────────────────────────
 
-function renderPillarResultCards(rows) {
+function renderPillarResultCards(rows, prevRows) {
   if (!rows || !rows.length) return '';
   return rows.map((row, i) => {
-    const ratio = row.score / row.weight;
-    const pct   = Math.round(ratio * 100);
-    const col   = ratio >= .95 ? '#166534' : ratio >= .80 ? '#15803d' : ratio >= .65 ? '#ca8a04' : ratio >= .50 ? '#c2410c' : '#b91c1c';
-    const bar   = ratio >= .95 ? '#16a34a' : ratio >= .80 ? '#22c55e' : ratio >= .65 ? '#f59e0b' : ratio >= .50 ? '#f97316' : '#ef4444';
+    const ratio  = row.score / row.weight;
+    const pct    = Math.round(ratio * 100);
+    const { text: col, bar } = statusColor(ratio);
+    const prev   = prevRows?.find(r => r.pillar === row.pillar);
+    const diff   = prev != null ? row.score - prev.score : null;
+    const deltaHtml = diff !== null
+      ? `<span class="prc-delta ${diff > 0 ? 'prc-delta--up' : diff < 0 ? 'prc-delta--down' : 'prc-delta--flat'}">
+           ${diff > 0 ? '▲' : diff < 0 ? '▼' : '━'} ${diff > 0 ? '+' : ''}${diff % 1 === 0 ? diff : diff.toFixed(1)}
+         </span>`
+      : '';
     return `
       <div class="pillar-result-card" style="--pcol:${bar};animation-delay:${(i * .065).toFixed(2)}s">
         <div class="prc-pillar">${esc(row.pillar || '—')}</div>
@@ -370,6 +397,7 @@ function renderPillarResultCards(rows) {
         <div class="prc-score-row">
           <span class="prc-score" style="color:${col}">${row.score}</span>
           <span class="prc-max">/ ${row.weight} pts</span>
+          ${deltaHtml}
         </div>
         <div class="prc-bar-track">
           <div class="prc-bar-fill" style="width:${pct}%;background:${bar}"></div>
@@ -377,6 +405,14 @@ function renderPillarResultCards(rows) {
         <div class="prc-achieved">${esc(row.derived)}</div>
       </div>`;
   }).join('');
+}
+
+// ── Results Tabs ───────────────────────────────────────────────────────────
+
+function switchResultsTab(tab) {
+  document.querySelectorAll('.results-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.rtab === tab));
+  document.getElementById('resultsTabOverview').classList.toggle('hidden', tab !== 'overview');
+  document.getElementById('resultsTabReview').classList.toggle('hidden', tab !== 'review');
 }
 
 // ── Period Navigator ───────────────────────────────────────────────────────
@@ -397,6 +433,20 @@ function updatePeriodNavigator(scorecardId) {
   if (lbl)  lbl.textContent = formatPeriod(sc.period);
 }
 
+// ── Underperformance Alert ────────────────────────────────────────────────
+
+function getUnderperformanceStreak(coachId, store) {
+  const entries = store.scorecards
+    .filter(s => s.coachId === coachId)
+    .sort((a, b) => b.period.localeCompare(a.period));
+  let streak = 0;
+  for (const e of entries) {
+    if (parseFloat(e.total) < 70) streak++;
+    else break;
+  }
+  return streak;
+}
+
 // ── Leaderboard ────────────────────────────────────────────────────────────
 
 function renderLeaderboard() {
@@ -404,7 +454,7 @@ function renderLeaderboard() {
   const el = document.getElementById('leaderboardContent');
 
   if (!store.coaches.length) {
-    el.innerHTML = '<p class="empty-state">No coaches added yet.</p>';
+    el.innerHTML = emptyState('👥', 'No coaches yet', 'Add your first coach above to get started.');
     return;
   }
 
@@ -431,11 +481,11 @@ function renderLeaderboard() {
       <table class="lb-table">
         <thead>
           <tr>
-            <th class="center" style="width:52px">Rank</th>
+            <th class="center" style="width:44px">Rank</th>
             <th>Coach</th>
-            <th>Branches</th>
-            <th class="center">Latest Score</th>
+            <th class="center">Score</th>
             <th class="center">vs Last</th>
+            <th>Pillar Breakdown</th>
             <th class="center">Trend</th>
           </tr>
         </thead>
@@ -444,24 +494,40 @@ function renderLeaderboard() {
             if (!row.latest) {
               return `<tr class="lb-row lb-row--empty">
                 <td class="center">—</td>
-                <td class="lb-name">${esc(row.coach.name)}</td>
-                <td class="lb-branches">${esc(row.coach.branches || '—')}</td>
-                <td colspan="3" style="color:var(--s-400);font-size:.76rem;text-align:center">No scorecards yet</td>
+                <td>
+                  <div class="lb-name">${esc(row.coach.name)}</div>
+                  <div class="lb-branches-sub">${esc(row.coach.branches || '—')}</div>
+                </td>
+                <td colspan="4" style="color:var(--s-400);font-size:.76rem;text-align:center">No scorecards yet</td>
               </tr>`;
             }
             rank++;
-            const r   = row.latest.rating || getRating(parseFloat(row.latest.total));
-            const dStr = row.delta !== null ? (row.delta > 0 ? `+${row.delta.toFixed(1)}` : row.delta.toFixed(1)) : '—';
-            const dCol = row.delta > 0 ? '#16a34a' : row.delta < 0 ? '#dc2626' : 'var(--s-400)';
-            return `<tr class="lb-row" onclick="adminViewCoach('${row.coach.id}')">
+            const r      = row.latest.rating || getRating(parseFloat(row.latest.total));
+            const dStr   = row.delta !== null ? (row.delta > 0 ? `+${row.delta.toFixed(1)}` : row.delta.toFixed(1)) : '—';
+            const dCol   = row.delta > 0 ? SC.great.bar : row.delta < 0 ? SC.poor.bar : 'var(--s-400)';
+            const streak = getUnderperformanceStreak(row.coach.id, store);
+            const alertBadge = streak >= 2
+              ? `<span class="lb-alert-badge" title="${streak} consecutive months below 70">⚠ ${streak}mo</span>`
+              : '';
+            const pillarBar = row.latest.rows
+              ? row.latest.rows.map(pr => {
+                  const { bar } = statusColor(pr.score / pr.weight);
+                  const w = Math.round((pr.weight / 100) * 100);
+                  return `<div class="lb-pillar-seg" style="width:${w}%;background:${bar}" title="${esc(pr.pillar)}: ${pr.score}/${pr.weight}"></div>`;
+                }).join('')
+              : '';
+            return `<tr class="lb-row${streak >= 2 ? ' lb-row--alert' : ''}" onclick="adminViewCoach('${row.coach.id}')">
               <td class="center lb-rank">${medals[rank - 1] || rank}</td>
-              <td class="lb-name">${esc(row.coach.name)}</td>
-              <td class="lb-branches">${esc(row.coach.branches || '—')}</td>
+              <td>
+                <div class="lb-name">${esc(row.coach.name)}${alertBadge}</div>
+                <div class="lb-branches-sub">${esc(row.coach.branches || '—')}</div>
+              </td>
               <td class="center">
                 <span class="lb-score">${parseFloat(row.latest.total).toFixed(1)}</span>
-                <span class="rating-chip" style="background:${r.color};margin-left:8px">${r.label}</span>
+                <span class="rating-chip" style="background:${r.color};margin-left:6px;font-size:.65rem">${r.label}</span>
               </td>
-              <td class="center lb-delta" style="color:${dCol}">${dStr}</td>
+              <td class="center lb-delta" style="color:${dCol};font-weight:700">${dStr}</td>
+              <td><div class="lb-pillar-bar">${pillarBar}</div></td>
               <td class="center">${row.lastSix.length > 1 ? renderMiniSparkline(row.lastSix) : '<span style="color:var(--s-400)">—</span>'}</td>
             </tr>`;
           }).join('')}
@@ -489,32 +555,77 @@ function verifyPin(entered) {
 // ── Admin ──────────────────────────────────────────────────────────────────
 
 function switchAdminTab(tabId) {
-  document.querySelectorAll('.mini-tab').forEach(t => t.classList.toggle('active', t.dataset.atab === tabId));
+  document.querySelectorAll('.admin-nav-item').forEach(t => t.classList.toggle('active', t.dataset.atab === tabId));
   document.querySelectorAll('.atab-panel').forEach(p => p.classList.toggle('hidden', p.id !== tabId));
   if (tabId === 'aScores')       renderAllScorecards();
   if (tabId === 'aLeaderboard')  renderLeaderboard();
+  if (tabId === 'aQuarterly')    initQuarterlyTab();
 }
 
 function renderAdminCoachList() {
   const store = loadStore();
   const el = document.getElementById('adminCoachList');
   if (store.coaches.length === 0) {
-    el.innerHTML = '<p class="empty-state">No coaches added yet.</p>';
+    el.innerHTML = emptyState('👥', 'No coaches yet', 'Go to Coaches to add your first area coach.');
     return;
   }
   el.innerHTML = store.coaches.map(c => {
-    const count = store.scorecards.filter(s => s.coachId === c.id).length;
+    const count  = store.scorecards.filter(s => s.coachId === c.id).length;
+    const streak = getUnderperformanceStreak(c.id, store);
+    const alertHtml = streak >= 2
+      ? `<span class="coach-alert-badge">⚠ ${streak} months below 70</span>`
+      : '';
+    const targetDisplay = c.salesTarget
+      ? `R ${Number(c.salesTarget).toLocaleString('en-ZA')}`
+      : 'Not set';
     return `
-      <div class="coach-card">
+      <div class="coach-card${streak >= 2 ? ' coach-card--alert' : ''}">
         <div class="coach-info">
-          <div class="coach-name">${esc(c.name)}</div>
+          <div class="coach-name">${esc(c.name)} ${alertHtml}</div>
           <div class="coach-meta">${esc(c.branches) || '<em>No branches</em>'} &nbsp;·&nbsp; ${count} scorecard${count !== 1 ? 's' : ''}</div>
+          <div class="coach-target-row">
+            <span class="coach-target-label">Monthly Sales Target:</span>
+            <span class="coach-target-val" id="coach-target-display-${c.id}">${targetDisplay}</span>
+            <button class="btn-link coach-target-edit-btn" onclick="toggleTargetEditor('${c.id}')">Edit</button>
+          </div>
+          <div class="coach-target-editor hidden" id="coach-target-editor-${c.id}">
+            <input type="number" class="coach-target-input" id="coach-target-input-${c.id}"
+              placeholder="e.g. 850000" value="${c.salesTarget || ''}" min="0" step="any" />
+            <button class="btn-primary" style="padding:6px 14px;font-size:0.8rem"
+              onclick="saveCoachTarget('${c.id}')">Save</button>
+            <button class="btn-ghost" style="padding:6px 10px;font-size:0.8rem"
+              onclick="toggleTargetEditor('${c.id}')">Cancel</button>
+          </div>
         </div>
         <div class="coach-actions">
           <button class="btn-ghost btn-danger" onclick="confirmDeleteCoach('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Delete</button>
         </div>
       </div>`;
   }).join('');
+}
+
+function toggleTargetEditor(coachId) {
+  document.getElementById(`coach-target-editor-${coachId}`)?.classList.toggle('hidden');
+}
+
+function saveCoachTarget(coachId) {
+  const val  = parseFloat(document.getElementById(`coach-target-input-${coachId}`)?.value) || 0;
+  const data = loadStore();
+  const coach = data.coaches.find(c => c.id === coachId);
+  if (!coach) return;
+  coach.salesTarget = val || null;
+  saveStore(data);
+  renderAdminCoachList();
+  showToast(val ? `Target set to R ${val.toLocaleString('en-ZA')}` : 'Target cleared.');
+}
+
+function prefillSalesTarget() {
+  if (!currentCoach?.salesTarget) return;
+  const el = document.getElementById('me_targetSales');
+  if (el && !el.value) {
+    el.value = currentCoach.salesTarget;
+    el.dispatchEvent(new Event('input'));
+  }
 }
 
 function confirmDeleteCoach(id, name) {
@@ -534,7 +645,7 @@ function renderAllScorecards() {
   const el = document.getElementById('allScorecardsList');
 
   if (store.scorecards.length === 0) {
-    el.innerHTML = '<p class="empty-state">No scorecards have been generated yet.</p>';
+    el.innerHTML = emptyState('📋', 'No scorecards yet', 'Scorecards will appear here once coaches submit data.');
     return;
   }
 
@@ -578,6 +689,24 @@ function renderCoachHome() {
   document.getElementById('coachWelcomeName').textContent = currentCoach.name;
   document.getElementById('headerActions').innerHTML =
     `<span class="header-role-badge">${esc(currentCoach.name)}</span>`;
+
+  // Submission status for current month
+  const now         = new Date();
+  const thisPeriod  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const store0      = loadStore();
+  const submitted   = store0.scorecards.some(s => s.coachId === currentCoach.id && s.period === thisPeriod);
+  const statusEl    = document.getElementById('dashSubmissionStatus');
+  if (statusEl) {
+    statusEl.className = submitted ? 'dash-submission-status dash-submission--done' : 'dash-submission-status dash-submission--due';
+    statusEl.innerHTML = submitted
+      ? `<span class="dsub-icon">✅</span><span class="dsub-text">${formatPeriod(thisPeriod)} submitted</span>`
+      : `<span class="dsub-icon">⚠</span><span class="dsub-text">${formatPeriod(thisPeriod)} not yet submitted</span>
+         <button class="dsub-cta" id="subStatusCta">Submit Now →</button>`;
+    if (!submitted) {
+      document.getElementById('subStatusCta')?.addEventListener('click', () =>
+        document.getElementById('goDataEntryBtn')?.click());
+    }
+  }
 
   const store = loadStore();
   const entries = store.scorecards
@@ -672,7 +801,14 @@ function renderManualEntryForm() {
         <span class="pillar-form-label">${esc(pillar)}</span>
       </div>
       ${kpis.map(k => renderKpiCard(k, 'me')).join('')}
-    </div>`).join('');
+    </div>`).join('') + `
+    <div class="context-note-block">
+      <label class="context-note-label" for="coachNoteInput">
+        Context Note <span class="sidebar-optional">(optional)</span>
+      </label>
+      <p class="context-note-hint">Add context that may explain this month's figures — e.g. load shedding, stock delivery delays, new branch opening.</p>
+      <textarea id="coachNoteInput" class="coach-note-textarea" placeholder="e.g. Load shedding affected Week 2 sales. New CBD branch opened mid-month."></textarea>
+    </div>`;
   bindLivePreviews('me');
 }
 
@@ -702,6 +838,8 @@ function handleGenerateEntry() {
   const fieldData  = collectManualForm();
   const { rows, total, rating } = computeScorecard(fieldData);
 
+  const coachNote = document.getElementById('coachNoteInput')?.value.trim() || '';
+
   const scorecard = {
     id: uid(),
     coachId: currentCoach.id,
@@ -710,6 +848,7 @@ function handleGenerateEntry() {
     rating,
     rows,
     fieldData,
+    coachNote,
     generatedAt: new Date().toISOString()
   };
 
@@ -767,7 +906,7 @@ function renderHeatmap() {
   if (!el) return;
 
   if (!store.coaches.length || !store.scorecards.length) {
-    el.innerHTML = '<p class="empty-state">No data yet — generate scorecards to see the heatmap.</p>';
+    el.innerHTML = emptyState('🌡️', 'No heatmap data yet', 'Generate scorecards across multiple periods to see the heatmap.');
     return;
   }
 
@@ -877,13 +1016,81 @@ function renderPastEntries() {
   ]);
 
   if (items.length === 0) {
-    el.innerHTML = '<p class="empty-state">No scorecards generated yet.<br>Go to Data Entry to create your first one.</p>';
+    el.innerHTML = emptyState('📊', 'No scorecards yet', 'Head to Data Entry to generate your first scorecard.');
     return;
   }
 
   el.innerHTML = `<div class="tl-list">${
     items.map((s, i) => timelineEntry(s, items[i + 1] || null, 'pastEntriesView')).join('')
   }</div>`;
+}
+
+// ── Coach Leaderboard (anonymised) ────────────────────────────────────────
+
+function renderCoachLeaderboard() {
+  const store = loadStore();
+  const el    = document.getElementById('coachLeaderboardList');
+  if (!el) return;
+
+  updateBreadcrumb('coachLbBreadcrumb', [
+    { label: currentCoach.name, onclick: "goBack()" },
+    { label: 'My Ranking' }
+  ]);
+
+  const rows = store.coaches.map(coach => {
+    const entries = store.scorecards
+      .filter(s => s.coachId === coach.id)
+      .sort((a, b) => b.period.localeCompare(a.period));
+    return { coach, latest: entries[0] || null };
+  })
+  .filter(r => r.latest)
+  .sort((a, b) => parseFloat(b.latest.total) - parseFloat(a.latest.total));
+
+  if (!rows.length) {
+    el.innerHTML = emptyState('🏆', 'No ranking data yet', 'Submit your first scorecard to see how you rank against the team.');
+    return;
+  }
+
+  const medals = ['🥇', '🥈', '🥉'];
+
+  el.innerHTML = `
+    <div class="lb-wrap">
+      <div class="lb-anon-note">👤 Other coaches are shown anonymously — only your own name is visible.</div>
+      <table class="lb-table">
+        <thead>
+          <tr>
+            <th class="center" style="width:44px">Rank</th>
+            <th>Coach</th>
+            <th class="center">Score</th>
+            <th class="center">Rating</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row, i) => {
+            const rank  = i + 1;
+            const isMe  = row.coach.id === currentCoach.id;
+            const r     = row.latest.rating || getRating(parseFloat(row.latest.total));
+            const score = parseFloat(row.latest.total).toFixed(1);
+            const nameHtml = isMe
+              ? `<div class="lb-name"><strong>${esc(row.coach.name)}</strong> <span class="lb-you-badge">You</span></div>
+                 <div class="lb-branches-sub">${esc(row.coach.branches || '—')}</div>`
+              : `<div class="lb-anon-name">Area Coach ${rank}</div>`;
+            return `<tr class="lb-row${isMe ? ' lb-row--me' : ''}">
+              <td class="center lb-rank">${medals[rank - 1] || rank}</td>
+              <td>${nameHtml}</td>
+              <td class="center">
+                ${isMe
+                  ? `<span class="lb-score">${score}</span>`
+                  : `<span class="lb-score" style="color:${r.color}">${score}</span>`}
+              </td>
+              <td class="center">
+                <span class="rating-chip" style="background:${r.color}">${isMe ? r.label : '—'}</span>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function scorecardMiniCard(s, backDest) {
@@ -905,8 +1112,224 @@ function scorecardMiniCard(s, backDest) {
 function viewSavedScorecard(id, backDest) {
   const s = loadStore().scorecards.find(x => x.id === id);
   if (!s) return;
+  if (!isHSOMode && currentCoach && s.coachId !== currentCoach.id) return;
   resultsBackDest = backDest;
   displayResults(s);
+}
+
+// ── Coaching Notes ────────────────────────────────────────────────────────
+
+function renderCoachingNotes(s) {
+  const el = document.getElementById('coachingNotesSection');
+  if (!el) return;
+  const isAdmin  = resultsBackDest === 'adminView';
+  const notes    = s.hsoNotes || '';
+
+  if (!isAdmin && !notes) { el.innerHTML = ''; return; }
+
+  if (isAdmin) {
+    el.innerHTML = `
+      <div class="results-section-header" style="margin-top:28px;">
+        <h3 class="results-section-title">Coaching Notes</h3>
+      </div>
+      <div class="coaching-notes-card">
+        <p class="coaching-notes-hint">Visible to the coach. Record feedback, action items, or observations from the review.</p>
+        <textarea id="coachingNotesInput" class="coaching-notes-textarea" placeholder="e.g. Focus on stock availability in the Westpark branch. Sales trend is positive — maintain momentum.">${esc(notes)}</textarea>
+        <div class="coaching-notes-actions">
+          <button class="btn-primary" onclick="saveCoachingNotes('${s.id}')">Save Notes</button>
+          ${notes ? `<button class="btn-ghost" onclick="clearCoachingNotes('${s.id}')">Clear</button>` : ''}
+        </div>
+        <div id="coachingNotesSaveMsg" class="coaching-notes-save-msg hidden">✓ Notes saved</div>
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <div class="results-section-header" style="margin-top:28px;">
+        <h3 class="results-section-title">Coaching Notes</h3>
+      </div>
+      <div class="coaching-notes-card coaching-notes-card--readonly">
+        <div class="coaching-notes-icon">📋</div>
+        <p class="coaching-notes-body">${esc(notes).replace(/\n/g, '<br>')}</p>
+      </div>`;
+  }
+}
+
+function saveCoachingNotes(scorecardId) {
+  const notes = document.getElementById('coachingNotesInput')?.value.trim() || '';
+  const data  = loadStore();
+  const sc    = data.scorecards.find(x => x.id === scorecardId);
+  if (!sc) return;
+  sc.hsoNotes = notes;
+  saveStore(data);
+  const msg = document.getElementById('coachingNotesSaveMsg');
+  if (msg) { msg.classList.remove('hidden'); setTimeout(() => msg.classList.add('hidden'), 2500); }
+}
+
+function clearCoachingNotes(scorecardId) {
+  const input = document.getElementById('coachingNotesInput');
+  if (input) input.value = '';
+  saveCoachingNotes(scorecardId);
+  renderCoachingNotes(loadStore().scorecards.find(x => x.id === scorecardId));
+}
+
+
+// ── Quarterly Report ──────────────────────────────────────────────────────
+
+const QUARTER_MONTHS = {
+  '1': ['01','02','03'],
+  '2': ['04','05','06'],
+  '3': ['07','08','09'],
+  '4': ['10','11','12']
+};
+
+function initQuarterlyTab() {
+  const store    = loadStore();
+  const coachSel = document.getElementById('qrCoachSelect');
+  const yearSel  = document.getElementById('qrYearSelect');
+  if (!coachSel || !yearSel) return;
+
+  coachSel.innerHTML = '<option value="">— Select coach —</option>' +
+    store.coaches.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+
+  const years = [...new Set(store.scorecards.map(s => s.period.slice(0,4)))].sort().reverse();
+  const thisYear = new Date().getFullYear().toString();
+  if (!years.includes(thisYear)) years.unshift(thisYear);
+  yearSel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+
+  document.getElementById('quarterlyReportContent').innerHTML = '';
+}
+
+function generateQuarterlyReport() {
+  const coachId = document.getElementById('qrCoachSelect')?.value;
+  const year    = document.getElementById('qrYearSelect')?.value;
+  const quarter = document.getElementById('qrQuarterSelect')?.value;
+  const el      = document.getElementById('quarterlyReportContent');
+
+  if (!coachId || !year || !quarter) { showToast('Please select a coach, year and quarter.'); return; }
+
+  const store  = loadStore();
+  const coach  = store.coaches.find(c => c.id === coachId);
+  const months = QUARTER_MONTHS[quarter];
+  const periodKeys = months.map(m => `${year}-${m}`);
+
+  const scorecards = periodKeys
+    .map(pk => store.scorecards.find(s => s.coachId === coachId && s.period === pk) || null);
+
+  const existing = scorecards.filter(Boolean);
+  if (!existing.length) {
+    el.innerHTML = emptyState('📅', 'No data for this quarter', 'No scorecards were submitted by this coach in the selected period.');
+    return;
+  }
+
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const qLabel     = `Q${quarter} ${year}`;
+
+  // Per-pillar averages
+  const pillarTotals = {};
+  const pillarWeights = {};
+  existing.forEach(sc => {
+    sc.rows.forEach(row => {
+      pillarTotals[row.pillar]  = (pillarTotals[row.pillar]  || 0) + row.score;
+      pillarWeights[row.pillar] = row.weight;
+    });
+  });
+  const pillarAvgs = Object.entries(pillarTotals).map(([pillar, total]) => ({
+    pillar,
+    weight: pillarWeights[pillar],
+    avg: total / existing.length
+  }));
+
+  const avgTotal  = existing.reduce((s, sc) => s + parseFloat(sc.total), 0) / existing.length;
+  const avgRating = getRating(avgTotal);
+
+  // Month columns
+  const monthCols = months.map((m, i) => {
+    const sc = scorecards[i];
+    const mn = monthNames[parseInt(m,10)-1];
+    if (!sc) return `<th class="center qr-month-missing">${mn}<br><span class="qr-no-data">No data</span></th>`;
+    const r = sc.rating || getRating(parseFloat(sc.total));
+    return `<th class="center qr-month-col">${mn}<br><span class="qr-month-score" style="color:${r.color}">${parseFloat(sc.total).toFixed(1)}</span></th>`;
+  }).join('');
+
+  const pillarRows = pillarAvgs.map(p => {
+    const ratio = p.avg / p.weight;
+    const col   = ratio >= .95 ? '#16a34a' : ratio >= .75 ? '#22c55e' : ratio >= .5 ? '#f59e0b' : '#ef4444';
+    const monthScores = months.map((m, i) => {
+      const sc = scorecards[i];
+      if (!sc) return `<td class="center qr-no-data-cell">—</td>`;
+      const row = sc.rows.find(r => r.pillar === p.pillar);
+      return `<td class="center">${row ? row.score : '—'}</td>`;
+    }).join('');
+    return `
+      <tr>
+        <td class="cmp-pillar">${esc(p.pillar)}</td>
+        <td class="center">${p.weight}</td>
+        ${monthScores}
+        <td class="center" style="color:${col};font-weight:700">${p.avg.toFixed(1)}</td>
+      </tr>`;
+  }).join('');
+
+  const noteRows = existing.map(sc => {
+    const hsoNotes   = sc.hsoNotes?.trim();
+    const coachNote  = sc.coachNote?.trim();
+    if (!hsoNotes && !coachNote) return '';
+    const mn = monthNames[parseInt(sc.period.slice(5,7),10)-1];
+    const hsoHtml   = hsoNotes  ? `<p class="qr-note-text"><strong>HSO:</strong> ${esc(hsoNotes).replace(/\n/g,'<br>')}</p>` : '';
+    const coachHtml = coachNote ? `<p class="qr-note-text" style="margin-top:6px"><strong>Coach:</strong> ${esc(coachNote)}</p>` : '';
+    return `<div class="qr-note-item"><span class="qr-note-month">${mn}</span><div>${hsoHtml}${coachHtml}</div></div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="quarterly-report" id="printableQR">
+      <div class="qr-header">
+        <div class="qr-header-main">
+          <div class="qr-eyebrow">Quarterly Performance Report</div>
+          <div class="qr-title">${esc(coach.name)}</div>
+          <div class="qr-meta">${esc(coach.branches || '—')} &nbsp;·&nbsp; ${qLabel}</div>
+        </div>
+        <div class="qr-summary-ring">
+          <div class="qr-avg-score" style="color:${avgRating.color}">${avgTotal.toFixed(1)}</div>
+          <div class="qr-avg-label">Avg Score</div>
+          <div class="qr-avg-rating" style="background:${avgRating.color}">${avgRating.label}</div>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-bottom:20px;">
+        <table class="cmp-table">
+          <thead>
+            <tr>
+              <th>Pillar</th>
+              <th class="center">Max</th>
+              ${monthCols}
+              <th class="center">Avg</th>
+            </tr>
+          </thead>
+          <tbody>${pillarRows}</tbody>
+          <tfoot>
+            <tr class="cmp-total-row">
+              <td colspan="2" style="text-align:right;padding-right:16px;font-weight:700;">TOTAL</td>
+              ${months.map((m,i) => {
+                const sc = scorecards[i];
+                return `<td class="center">${sc ? parseFloat(sc.total).toFixed(1) : '—'}</td>`;
+              }).join('')}
+              <td class="center" style="color:${avgRating.color};font-weight:700">${avgTotal.toFixed(1)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      ${noteRows ? `
+        <div class="qr-notes-section">
+          <div class="results-section-header">
+            <h3 class="results-section-title">Coaching Notes — ${qLabel}</h3>
+          </div>
+          <div class="qr-notes-list">${noteRows}</div>
+        </div>` : ''}
+
+      <div class="qr-footer no-print">
+        <button class="btn-primary" onclick="window.print()">Print / Save PDF</button>
+        <span class="qr-footer-note">Generated ${new Date().toLocaleDateString('en-ZA')}</span>
+      </div>
+    </div>`;
 }
 
 // ── CSV Export ────────────────────────────────────────────────────────────
@@ -980,9 +1403,10 @@ function displayResults(s, fromNav = false) {
   const prevEntries = store.scorecards
     .filter(x => x.coachId === s.coachId && x.period < s.period)
     .sort((a, b) => b.period.localeCompare(a.period));
+  const prevEntry = prevEntries[0] || null;
   const deltaEl = document.getElementById('scoreDelta');
-  if (prevEntries.length) {
-    const diff = t - parseFloat(prevEntries[0].total);
+  if (prevEntry) {
+    const diff = t - parseFloat(prevEntry.total);
     deltaEl.textContent = (diff >= 0 ? '+' : '') + diff.toFixed(1) + ' vs prev';
     deltaEl.className   = 'score-delta ' + (diff > 0 ? 'score-delta--up' : diff < 0 ? 'score-delta--down' : 'score-delta--flat');
     deltaEl.classList.remove('hidden');
@@ -1016,16 +1440,22 @@ function displayResults(s, fromNav = false) {
     </tr>`;
   }).join('');
 
-  // Pillar cards
-  document.getElementById('pillarResultsGrid').innerHTML = renderPillarResultCards(s.rows);
+  // Pillar cards (with inline deltas vs previous period)
+  document.getElementById('pillarResultsGrid').innerHTML = renderPillarResultCards(s.rows, prevEntry?.rows);
 
-  // Narrative
+  // Narrative + coach context note
   const narrativeEl = document.getElementById('scoreNarrative');
   if (narrativeEl) {
-    const html = generateNarrative(s, coach);
-    narrativeEl.innerHTML = html;
-    narrativeEl.classList.toggle('hidden', !html);
+    const coachNoteHtml = s.coachNote
+      ? `<div class="coach-context-note"><span class="ccn-label">📝 Coach note:</span> ${esc(s.coachNote)}</div>`
+      : '';
+    const narrative = generateNarrative(s, coach);
+    narrativeEl.innerHTML = narrative + coachNoteHtml;
+    narrativeEl.classList.toggle('hidden', !narrative && !s.coachNote);
   }
+
+  // Coaching notes (HSO)
+  renderCoachingNotes(s);
 
   // Rating scale highlight
   document.querySelectorAll('.scale-item').forEach(el => el.classList.remove('scale-active'));
@@ -1041,6 +1471,7 @@ function displayResults(s, fromNav = false) {
   updatePeriodNavigator(s.id);
 
   if (!fromNav) navStack.push(resultsBackDest === 'adminView' ? 'adminView' : resultsBackDest);
+  switchResultsTab('overview');
   showView('resultsView');
 
   // Animations — deferred one frame so layout is painted
@@ -1189,9 +1620,17 @@ function renderKpiCard(kpi, prefix) {
         step="${f.step || 'any'}" />
     </div>`).join('');
 
+  // Reference info consolidated into the scoring collapsible
+  const metaLines = [
+    kpi.formula    ? `<div class="kpi-scoring-meta-row"><span class="ksm-label">Formula</span><span class="ksm-val">${kpi.formula}</span></div>` : '',
+    kpi.dataSource ? `<div class="kpi-scoring-meta-row"><span class="ksm-label">Source</span><span class="ksm-val">${kpi.dataSource}</span></div>` : '',
+    kpi.includes?.length ? `<div class="kpi-scoring-meta-row"><span class="ksm-label">Include</span><span class="ksm-val">${kpi.includes.join(', ')}</span></div>` : '',
+  ].filter(Boolean).join('');
+
   const bandsHtml = kpi.bands ? `
     <details class="kpi-bands-details">
       <summary class="kpi-bands-summary">How is this scored? <span class="kpi-bands-chevron">▾</span></summary>
+      ${metaLines ? `<div class="kpi-scoring-meta">${metaLines}</div>` : ''}
       <div class="kpi-bands-table">
         ${kpi.bands.map(b => `
           <div class="kpi-band-row">
@@ -1206,12 +1645,13 @@ function renderKpiCard(kpi, prefix) {
 
   return `
     <div class="kpi-card ${weightClass}" id="kpicard_${kpi.id}">
-      <div class="kpi-pillar-tag">${kpi.pillar}</div>
       <div class="kpi-header">
+        <div class="kpi-header-left">
+          <span class="kpi-pillar-tag">${kpi.pillar}</span>
+          <h3>${kpi.label}</h3>
+        </div>
         <span class="kpi-badge">${kpi.pts} pts</span>
-        <h3>${kpi.label}</h3>
       </div>
-      <p class="kpi-formula">${kpi.formula}</p>
       <div class="field-row${single ? ' single' : ''}">
         ${fields}
         <span class="preview" id="${prefix}_prev_${kpi.id}"></span>
@@ -1335,6 +1775,14 @@ function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function emptyState(icon, heading, body) {
+  return `<div class="empty-state-block">
+    <div class="esb-icon">${icon}</div>
+    <div class="esb-heading">${heading}</div>
+    <div class="esb-body">${body}</div>
+  </div>`;
+}
+
 function formatPeriod(p) {
   if (!p) return '—';
   const [y, m] = p.split('-');
@@ -1372,6 +1820,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (verifyPin(val)) {
       document.getElementById('pinError').classList.add('hidden');
       document.getElementById('pinInput').value = '';
+      isHSOMode = true;
+      aiHistory = [];
       renderAdminCoachList();
       const clientId = loadStore().googleClientId;
       document.getElementById('googleClientIdInput').value = clientId;
@@ -1389,7 +1839,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('backFromPin').addEventListener('click', goBack);
 
   // Admin tabs
-  document.querySelectorAll('.mini-tab').forEach(t =>
+  document.querySelectorAll('.admin-nav-item').forEach(t =>
     t.addEventListener('click', () => switchAdminTab(t.dataset.atab)));
 
   // Admin – add coach
@@ -1443,8 +1893,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Admin – download template
   document.getElementById('downloadTemplateBtn').addEventListener('click', downloadTemplate);
 
+  // Admin – quarterly report
+  document.getElementById('qrGenerateBtn').addEventListener('click', generateQuarterlyReport);
+
   // Admin – exit
   document.getElementById('exitAdminBtn').addEventListener('click', () => {
+    isHSOMode = false;
+    aiHistory = [];
     navStack = [];
     document.getElementById('headerActions').innerHTML = '';
     showView('landingView');
@@ -1459,6 +1914,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const coach = loadStore().coaches.find(c => c.id === id);
     if (!coach) return;
     currentCoach = coach;
+    isHSOMode = false;
+    aiHistory = [];
     renderCoachHome();
     navigate('coachHomeView');
   });
@@ -1488,6 +1945,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Coach home
   document.getElementById('goDataEntryBtn').addEventListener('click', () => {
     renderManualEntryForm();
+    prefillSalesTarget();
+    const noteEl = document.getElementById('coachNoteInput');
+    if (noteEl) noteEl.value = '';
     switchEntryMethod('manual');
     const now    = new Date();
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -1508,8 +1968,15 @@ document.addEventListener('DOMContentLoaded', () => {
     renderPastEntries();
     navigate('pastEntriesView');
   });
+  document.getElementById('goCoachLeaderboardBtn').addEventListener('click', () => {
+    renderCoachLeaderboard();
+    navigate('coachLeaderboardView');
+  });
+  document.getElementById('backFromCoachLb').addEventListener('click', goBack);
   document.getElementById('changeUserBtn').addEventListener('click', () => {
     currentCoach = null;
+    isHSOMode = false;
+    aiHistory = [];
     navStack = [];
     document.getElementById('headerActions').innerHTML = '';
     populateCoachLoginSelect();
@@ -1621,4 +2088,280 @@ document.addEventListener('DOMContentLoaded', () => {
     dots.forEach(d => d.addEventListener('click', () => { goTo(+d.dataset.slide); resetTimer(); }));
     startTimer();
   })();
+
+  // AI Insights — Settings key management
+  document.getElementById('saveAiKeyBtn')?.addEventListener('click', () => {
+    const val = document.getElementById('aiApiKeyInput')?.value.trim();
+    if (!val || !val.startsWith('gsk_')) {
+      showToast('Enter a valid Groq API key (starts with gsk_).');
+      return;
+    }
+    saveAIKey(val);
+    showToast('AI key saved.');
+    document.getElementById('aiApiKeyInput').value = '';
+  });
+  document.getElementById('clearAiKeyBtn')?.addEventListener('click', () => {
+    localStorage.removeItem('foodco_ai_key');
+    aiHistory = [];
+    document.getElementById('aiMessages').innerHTML = '';
+    showToast('AI key removed.');
+  });
+
+  // AI textarea — Enter submits, Shift+Enter newline, auto-resize
+  document.getElementById('aiQuestionInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAIQuestion(); }
+  });
+  document.getElementById('aiQuestionInput')?.addEventListener('input', function () {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
 });
+
+// ── AI INSIGHTS ───────────────────────────────────────────────────────────
+
+const AI_KEY_STORE = 'foodco_groq_key';
+let aiHistory = [];
+
+function loadAIKey()    { return localStorage.getItem(AI_KEY_STORE) || ''; }
+function saveAIKey(key) { localStorage.setItem(AI_KEY_STORE, key.trim()); }
+
+function buildDataContext(scopeCoachId = null) {
+  const store = loadStore();
+  const now   = new Date();
+  const month = now.toLocaleString('en-ZA', { month: 'long', year: 'numeric' });
+
+  let ctx = `PLATFORM: Foodco Area Coach Performance Scorecard (internal tool)\nREPORT DATE: ${month}\n\n`;
+
+  ctx += `SCORING SYSTEM (9 KPIs, 100 pts total):\n`;
+  KPI_CONFIG.forEach(k => {
+    ctx += `- ${k.label} (${k.pts}pts): ` + k.bands.map(b => `${b.label}=${b.score}`).join(' | ') + '\n';
+  });
+
+  ctx += `\nRATING TIERS:\n90-100=Outstanding (Promotion Ready)\n80-89=Strong Performer (High Potential)\n70-79=Solid (Meets Expectations)\n60-69=Needs Improvement (Coaching Required)\n<60=Underperforming (Immediate Intervention)\n\n`;
+
+  const coachesToShow = scopeCoachId
+    ? store.coaches.filter(c => c.id === scopeCoachId)
+    : store.coaches;
+
+  if (!coachesToShow.length) { ctx += 'No coaches registered yet.\n'; return ctx; }
+
+  ctx += `COACHES & SCORECARD HISTORY:\n`;
+  coachesToShow.forEach(coach => {
+    const scorecards = store.scorecards
+      .filter(s => s.coachId === coach.id)
+      .sort((a, b) => b.period.localeCompare(a.period))
+      .slice(0, 12);
+
+    ctx += `\n[${coach.name} | Branches: ${coach.branches || 'N/A'}]\n`;
+    if (!scorecards.length) { ctx += '  No scorecards submitted.\n'; return; }
+
+    scorecards.forEach(sc => {
+      const rLabel = sc.rating?.label || getRating(parseFloat(sc.total)).label;
+      const rowStr = sc.rows
+        ? sc.rows.map(r => `${r.label.split(' ')[0].replace(/[^A-Za-z]/g,'')}:${r.score}/${r.weight}`).join(', ')
+        : '';
+      ctx += `  ${sc.period}: ${parseFloat(sc.total).toFixed(1)}/100 (${rLabel}) | ${rowStr}\n`;
+      if (sc.coachNote) ctx += `    Coach note: "${sc.coachNote.substring(0, 100)}"\n`;
+      if (sc.hsoNotes)  ctx += `    HSO note: "${sc.hsoNotes.substring(0, 100)}"\n`;
+    });
+  });
+
+  return ctx;
+}
+
+function updateAISuggestions() {
+  const sugEl = document.getElementById('aiSuggestions');
+  if (!sugEl) return;
+  if (isHSOMode) {
+    sugEl.innerHTML = `
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">Who is the top performer?</button>
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">Which KPI needs most attention?</button>
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">Who is at risk of underperforming?</button>
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">Summarise all coach scores</button>`;
+  } else {
+    sugEl.innerHTML = `
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">How did I perform last month?</button>
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">What are my weakest KPIs?</button>
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">What's my score trend?</button>
+      <button class="ai-suggestion-chip" onclick="useAISuggestion(this)">What should I focus on next month?</button>`;
+  }
+}
+
+function toggleAIPanel() {
+  const panel = document.getElementById('aiChatPanel');
+  const isOpen = !panel.classList.contains('ai-panel--closed');
+  if (isOpen) {
+    panel.classList.add('ai-panel--closed');
+  } else {
+    panel.classList.remove('ai-panel--closed');
+    if (!aiHistory.length) initAIPanel();
+    setTimeout(() => document.getElementById('aiQuestionInput')?.focus(), 80);
+  }
+}
+
+function initAIPanel() {
+  const key   = loadAIKey();
+  const msgEl = document.getElementById('aiMessages');
+  msgEl.innerHTML = '';
+  aiHistory = [];
+
+  if (!key) {
+    msgEl.innerHTML = `
+      <div class="ai-setup-block">
+        <div class="ai-setup-icon">✨</div>
+        <div class="ai-setup-title">Set up AI Insights</div>
+        <div class="ai-setup-desc">Add your Groq API key to ask questions about scorecard data in plain English. Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="color:var(--green)">console.groq.com</a>.</div>
+        <input type="password" id="aiKeyInputInline" class="ai-key-input" placeholder="gsk_…" autocomplete="off" />
+        <button class="btn-primary btn-full" onclick="saveAIKeyInline()">Save &amp; Activate</button>
+        <p class="ai-setup-note">Key is stored only in this browser — never sent to any third-party server.</p>
+      </div>`;
+    document.getElementById('aiSuggestions').classList.add('hidden');
+    document.getElementById('aiInputRow').classList.add('hidden');
+    return;
+  }
+
+  document.getElementById('aiSuggestions').classList.remove('hidden');
+  document.getElementById('aiInputRow').classList.remove('hidden');
+  updateAISuggestions();
+
+  const store = loadStore();
+  if (isHSOMode) {
+    const coachCount = store.coaches.length;
+    const scCount    = store.scorecards.length;
+    appendAIMessage('ai',
+      `Hi! I have access to **${scCount} scorecard${scCount !== 1 ? 's' : ''}** across **${coachCount} coach${coachCount !== 1 ? 'es' : ''}**. Ask me anything about performance, trends, or team insights.`
+    );
+  } else {
+    const myCount = store.scorecards.filter(s => s.coachId === currentCoach?.id).length;
+    const first   = currentCoach?.name?.split(' ')[0] || 'Coach';
+    appendAIMessage('ai',
+      `Hi ${first}! I have access to your **${myCount} scorecard${myCount !== 1 ? 's' : ''}**. Ask me anything about your own performance, trends, or which KPIs to focus on.`
+    );
+  }
+}
+
+function saveAIKeyInline() {
+  const val = document.getElementById('aiKeyInputInline')?.value.trim();
+  if (!val || !val.startsWith('gsk_')) {
+    showToast('Enter a valid Groq API key (starts with gsk_).');
+    return;
+  }
+  saveAIKey(val);
+  document.getElementById('aiMessages').innerHTML = '';
+  initAIPanel();
+  showToast('AI key saved — ready to go!');
+}
+
+function appendAIMessage(role, text) {
+  const msgEl = document.getElementById('aiMessages');
+  const div   = document.createElement('div');
+  div.className = `ai-msg ai-msg--${role}`;
+
+  // Simple markdown: **bold**, bullet lines, newlines
+  const safe = text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const lines = safe.split('\n');
+  let html = '', inList = false;
+  lines.forEach(line => {
+    const bullet = line.match(/^[-•*]\s+(.+)/);
+    if (bullet) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${bullet[1].replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</li>`;
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      const formatted = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      html += formatted ? `<p>${formatted}</p>` : '<br>';
+    }
+  });
+  if (inList) html += '</ul>';
+
+  div.innerHTML = `<div class="ai-msg-bubble">${html}</div>`;
+  msgEl.appendChild(div);
+  msgEl.scrollTop = msgEl.scrollHeight;
+}
+
+function showAITyping() {
+  const msgEl = document.getElementById('aiMessages');
+  const div   = document.createElement('div');
+  div.className = 'ai-msg ai-msg--ai';
+  div.id = 'aiTypingIndicator';
+  div.innerHTML = `<div class="ai-msg-bubble ai-typing"><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span></div>`;
+  msgEl.appendChild(div);
+  msgEl.scrollTop = msgEl.scrollHeight;
+}
+
+function removeAITyping() { document.getElementById('aiTypingIndicator')?.remove(); }
+
+async function submitAIQuestion() {
+  const input    = document.getElementById('aiQuestionInput');
+  const question = input?.value.trim();
+  if (!question) return;
+
+  const key = loadAIKey();
+  if (!key) { initAIPanel(); return; }
+
+  document.getElementById('aiSuggestions').classList.add('hidden');
+  const sendBtn  = document.getElementById('aiSendBtn');
+  input.value    = '';
+  input.style.height = 'auto';
+  input.disabled = true;
+  sendBtn.disabled = true;
+
+  appendAIMessage('user', question);
+  showAITyping();
+
+  aiHistory.push({ role: 'user', content: question });
+  if (aiHistory.length > 20) aiHistory = aiHistory.slice(-20);
+
+  const scopeId = isHSOMode ? null : currentCoach?.id;
+  const roleCtx = isHSOMode
+    ? 'You have full access to all coach and scorecard data provided below.'
+    : `You only have access to the data of the coach using this tool — ${currentCoach?.name || 'the current coach'}. Do not speculate about other coaches.`;
+  const systemPrompt =
+    `You are an AI assistant for the Foodco Area Coach Performance Scorecard platform. ${roleCtx} Answer concisely and directly — use bullet points and specific numbers where helpful. This is an internal business tool.\n\n` +
+    buildDataContext(scopeId);
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: 1024,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...aiHistory,
+        ],
+      }),
+    });
+
+    const data = await res.json();
+    removeAITyping();
+
+    if (!res.ok) {
+      const msg = data.error?.message || `API error (${res.status})`;
+      appendAIMessage('ai', `⚠ ${msg}`);
+      aiHistory.pop();
+    } else {
+      const reply = data.choices[0].message.content;
+      aiHistory.push({ role: 'assistant', content: reply });
+      appendAIMessage('ai', reply);
+    }
+  } catch {
+    removeAITyping();
+    appendAIMessage('ai', '⚠ Network error — check your connection and try again.');
+    aiHistory.pop();
+  } finally {
+    input.disabled  = false;
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+function useAISuggestion(el) {
+  const input = document.getElementById('aiQuestionInput');
+  if (input) { input.value = el.textContent.trim(); submitAIQuestion(); }
+}

@@ -1,3 +1,7 @@
+# Secrets — never commit
+.env
+.env.*
+
 # OS
 .DS_Store
 Thumbs.db
