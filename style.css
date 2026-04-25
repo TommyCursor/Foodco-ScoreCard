@@ -2457,6 +2457,46 @@ tfoot .score-cell {
 
   /* ── KPI Bands ── */
   .kpi-band-threshold { width: 90px; font-size: 0.64rem; }
+
+  /* ── KPI scoring meta ── */
+  .kpi-scoring-meta-row { flex-wrap: wrap; gap: 2px 6px; }
+  .ksm-label { min-width: 52px; }
+
+  /* ── Quarterly Report header: stack on mobile ── */
+  .qr-header { flex-direction: column; padding: 18px; gap: 14px; }
+  .qr-summary-ring {
+    display: flex; flex-direction: row;
+    align-items: center; justify-content: center;
+    gap: 16px; width: 100%; padding: 12px 16px;
+  }
+  .qr-avg-label { margin-bottom: 0; }
+  .qr-title     { font-size: 1.15rem; }
+
+  /* ── Results sub-header: shrink print button ── */
+  #printBtn { font-size: 0.76rem; padding: 8px 12px; min-height: 40px; }
+
+  /* ── Coaching notes ── */
+  .coaching-notes-card { padding: 14px; }
+
+  /* ── Coach target row ── */
+  .coach-target-row { flex-wrap: wrap; gap: 4px; }
+
+  /* ── Breadcrumbs ── */
+  .breadcrumb { font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+
+  /* ── Governance card ── */
+  .governance-card .gov-item { gap: 10px; }
+
+  /* ── Past card ── */
+  .past-card { flex-wrap: wrap; gap: 10px; padding: 14px 16px; }
+  .past-card-right { flex-direction: row; align-items: center; gap: 8px; }
+
+  /* ── Score narrative ── */
+  .score-narrative { margin: 0 0 14px; }
+
+  /* ── AI suggestions: wrap chips ── */
+  .ai-suggestions { flex-wrap: wrap; }
+  .ai-suggestion-chip { font-size: 0.72rem; }
 }
 
 /* ── Very small phones  ≤ 380px ──────────────────────────────────────────── */
@@ -2471,6 +2511,30 @@ tfoot .score-cell {
   .center-card   { padding: 28px 18px; }
   .kpi-card      { padding: 14px 14px; }
   table          { min-width: 420px; }
+
+  /* Admin sidebar: hide labels, icon only */
+  .ani-label { display: none; }
+  .admin-nav-item { padding: 10px 4px; }
+  .ani-icon { font-size: 1.2rem; }
+
+  /* Quarterly report */
+  .qr-header { padding: 14px; }
+  .qr-title  { font-size: 1rem; }
+  .qr-summary-ring { padding: 10px 12px; }
+  .qr-avg-score { font-size: 1.6rem; }
+
+  /* Results sub-header: stack period nav below back/print */
+  .sub-header { flex-wrap: wrap; }
+  .period-nav { order: 3; width: 100%; justify-content: center; border-top: 1px solid var(--border); padding-top: 8px; }
+
+  /* Pillar cards: single col */
+  .pillar-results-grid { grid-template-columns: 1fr; }
+
+  /* Breadcrumb: shorter */
+  .breadcrumb { max-width: 140px; }
+
+  /* AI panel: taller on small phones */
+  .ai-panel { height: 88dvh; }
 }
 
 /* ══ COCKPIT LAYOUT ══════════════════════════════════════════════════════════ */
@@ -3129,6 +3193,33 @@ tfoot .score-cell {
   .ani-icon        { font-size: 0.9rem; }
   .admin-content   { padding: 16px; }
   .results-tab-bar { padding: 8px 16px 0; top: 56px; }
+  /* Tables need overflow at tablet size too */
+  .table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table       { min-width: 480px; }
+}
+
+@media (max-width: 640px) {
+  /* Admin sidebar: 5-column grid so all tabs are always visible */
+  .admin-sidebar-nav {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    overflow-x: visible;
+    gap: 2px;
+    padding: 6px;
+  }
+  .admin-nav-item {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 9px 2px;
+    gap: 3px;
+    flex-shrink: 1;
+    font-size: 0.58rem;
+    border-radius: 8px;
+  }
+  .ani-icon  { font-size: 1.05rem; }
+  .ani-label { font-size: 0.56rem; letter-spacing: 0; }
+  .admin-content { padding: 12px; }
 }
 
 /* Carry-forward button */
