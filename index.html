@@ -223,26 +223,6 @@
         </div>
       </div>
 
-      <!-- AI Configuration -->
-      <div class="kpi-card">
-        <h3 class="section-label">AI Insights</h3>
-        <p style="font-size:0.82rem;color:var(--s-500);margin-bottom:14px;line-height:1.5;">
-          Add your Groq API key to enable the AI assistant. Get a free key at
-          <a href="https://console.groq.com/keys" target="_blank" rel="noopener" class="ext-link">console.groq.com</a>.
-          The key is stored in this browser only — never sent to any third-party server.
-        </p>
-        <div class="field-row">
-          <div class="field">
-            <label for="aiApiKeyInput">Groq API Key</label>
-            <input type="password" id="aiApiKeyInput" placeholder="gsk_…" autocomplete="off" />
-          </div>
-        </div>
-        <div class="form-actions">
-          <button type="button" class="btn-primary" id="saveAiKeyBtn">Save Key</button>
-          <button type="button" class="btn-ghost" id="clearAiKeyBtn">Remove Key</button>
-        </div>
-      </div>
-
       <!-- Governance -->
       <div class="kpi-card governance-card">
         <h3 class="section-label">Governance Structure</h3>
@@ -617,6 +597,24 @@
   </div>
   <div class="container">
     <div id="coachLeaderboardList"></div>
+  </div>
+</div>
+
+<!-- ══ COACH GREETING POPUP ════════════════════════════════════════════════ -->
+<div id="greetingOverlay" class="greeting-overlay hidden" role="dialog" aria-modal="true">
+  <div class="greeting-card" id="greetingCard">
+    <div class="greeting-header">
+      <div class="greeting-ai-badge">AI</div>
+      <div class="greeting-header-text">
+        <div class="greeting-powered">Foodco Virtual Assistant</div>
+      </div>
+    </div>
+    <div class="greeting-title" id="greetingTitle"></div>
+    <p class="greeting-body" id="greetingBody"></p>
+    <button class="greeting-cta" onclick="dismissGreeting()">Got it →</button>
+    <div class="greeting-progress-track">
+      <div class="greeting-progress" id="greetingProgress"></div>
+    </div>
   </div>
 </div>
 

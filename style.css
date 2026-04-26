@@ -3972,23 +3972,124 @@ tfoot .score-cell {
 .ai-send-btn:active   { transform: translateY(0); }
 .ai-send-btn:disabled { background: var(--s-300); cursor: not-allowed; transform: none; }
 
-/* Setup screen (shown when no API key) */
-.ai-setup-block    { padding: 28px 20px; text-align: center; }
-.ai-setup-icon     { font-size: 2.8rem; margin-bottom: 14px; }
-.ai-setup-title    { font-size: 1rem; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
-.ai-setup-desc     { font-size: 0.82rem; color: var(--s-500); margin-bottom: 20px; line-height: 1.55; }
-.ai-key-input {
-  width: 100%;
-  border: 1px solid var(--s-300);
-  border-radius: 10px;
-  padding: 10px 14px;
-  font-size: 0.85rem;
-  font-family: inherit;
-  margin-bottom: 12px;
-  transition: border-color .15s;
+/* ══ COACH GREETING POPUP ════════════════════════════════════════════════════ */
+
+.greeting-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(10,20,14,0);
+  transition: background .35s;
+  pointer-events: none;
 }
-.ai-key-input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(21,128,61,.1); }
-.ai-setup-note { font-size: 0.73rem; color: var(--s-400); margin-top: 12px; line-height: 1.45; }
+.greeting-overlay.greeting--visible {
+  background: rgba(10,20,14,0.45);
+  pointer-events: auto;
+}
+.greeting-overlay.greeting--out {
+  background: rgba(10,20,14,0);
+  pointer-events: none;
+}
+
+.greeting-card {
+  background: #fff;
+  border-radius: 24px 24px 0 0;
+  padding: 28px 28px 0;
+  max-width: 540px;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  transform: translateY(100%);
+  transition: transform .42s cubic-bezier(.34,1.28,.64,1);
+  box-shadow: 0 -8px 48px rgba(0,0,0,.18);
+}
+.greeting--visible .greeting-card { transform: translateY(0); }
+.greeting--out     .greeting-card { transform: translateY(100%); transition-timing-function: ease-in; transition-duration: .32s; }
+
+.greeting-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.greeting-ai-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--g-700), var(--g-500));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: .04em;
+  flex-shrink: 0;
+}
+.greeting-powered {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.greeting-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--navy);
+  letter-spacing: -.035em;
+  margin-bottom: 12px;
+  line-height: 1.2;
+}
+.greeting-body {
+  font-size: 0.9rem;
+  color: var(--s-600);
+  line-height: 1.7;
+  margin: 0 0 20px;
+}
+.greeting-body strong { color: var(--navy); }
+
+.greeting-cta {
+  display: block;
+  width: 100%;
+  padding: 13px;
+  background: linear-gradient(135deg, var(--g-700), var(--g-500));
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  margin-bottom: 20px;
+  letter-spacing: .01em;
+  transition: opacity .15s;
+}
+.greeting-cta:hover { opacity: .88; }
+
+.greeting-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--s-100);
+}
+.greeting-progress {
+  height: 100%;
+  background: linear-gradient(90deg, var(--g-700), var(--g-500));
+  width: 100%;
+}
+
+@media (max-width: 520px) {
+  .greeting-card { padding: 22px 20px 0; border-radius: 20px 20px 0 0; }
+  .greeting-title { font-size: 1.2rem; }
+  .greeting-body  { font-size: 0.84rem; }
+}
 
 /* Print: hide panel and FAB */
 @media print {

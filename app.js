@@ -251,6 +251,7 @@ function uid() { return Math.random().toString(36).slice(2) + Date.now().toStrin
 
 let currentCoach = null;
 let isHSOMode = false;
+let hasShownGreeting = false;
 let resultsBackDest = 'coachHomeView';
 let currentResultScorecard = null;
 let currentCoachScorecards = [];
@@ -1916,8 +1917,10 @@ document.addEventListener('DOMContentLoaded', () => {
     currentCoach = coach;
     isHSOMode = false;
     aiHistory = [];
+    hasShownGreeting = false;
     renderCoachHome();
     navigate('coachHomeView');
+    setTimeout(() => showCoachGreeting(coach), 800);
   });
   document.getElementById('backFromCoachSelect').addEventListener('click', goBack);
 
@@ -1977,6 +1980,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentCoach = null;
     isHSOMode = false;
     aiHistory = [];
+    hasShownGreeting = false;
     navStack = [];
     document.getElementById('headerActions').innerHTML = '';
     populateCoachLoginSelect();
@@ -2090,22 +2094,6 @@ document.addEventListener('DOMContentLoaded', () => {
   })();
 
   // AI Insights — Settings key management
-  document.getElementById('saveAiKeyBtn')?.addEventListener('click', () => {
-    const val = document.getElementById('aiApiKeyInput')?.value.trim();
-    if (!val || !val.startsWith('gsk_')) {
-      showToast('Enter a valid Groq API key (starts with gsk_).');
-      return;
-    }
-    saveAIKey(val);
-    showToast('AI key saved.');
-    document.getElementById('aiApiKeyInput').value = '';
-  });
-  document.getElementById('clearAiKeyBtn')?.addEventListener('click', () => {
-    localStorage.removeItem('foodco_ai_key');
-    aiHistory = [];
-    document.getElementById('aiMessages').innerHTML = '';
-    showToast('AI key removed.');
-  });
 
   // AI textarea — Enter submits, Shift+Enter newline, auto-resize
   document.getElementById('aiQuestionInput')?.addEventListener('keydown', e => {
@@ -2117,13 +2105,67 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// ── Coach Greeting Popup ──────────────────────────────────────────────────
+
+function getWATGreeting() {
+  const watHour = (new Date().getUTCHours() + 1) % 24;
+  if (watHour >= 5  && watHour < 12) return 'Good morning';
+  if (watHour >= 12 && watHour < 17) return 'Good afternoon';
+  if (watHour >= 17 && watHour < 21) return 'Good evening';
+  return 'Good evening';
+}
+
+function showCoachGreeting(coach) {
+  if (hasShownGreeting) return;
+  hasShownGreeting = true;
+
+  const firstName  = coach.name.split(' ')[0];
+  const greeting   = getWATGreeting();
+  const overlay    = document.getElementById('greetingOverlay');
+  if (!overlay) return;
+
+  document.getElementById('greetingTitle').textContent = `${greeting}, ${firstName}.`;
+  document.getElementById('greetingBody').innerHTML =
+    `I'm your <strong>Foodco Virtual Assistant</strong> — built specifically for this platform and ` +
+    `trained on Foodco's operational processes, KPI framework, and performance standards. ` +
+    `Whether you need help understanding your scorecard, analysing your trends, or preparing for ` +
+    `a quarterly review, I'm always available. Tap the <strong>AI</strong> button at the bottom ` +
+    `right of your screen anytime to get started.`;
+
+  overlay.classList.remove('hidden');
+  void overlay.offsetWidth;
+  overlay.classList.add('greeting--visible');
+
+  const bar = document.getElementById('greetingProgress');
+  if (bar) {
+    bar.style.transition = 'none';
+    bar.style.width = '100%';
+    requestAnimationFrame(() => {
+      bar.style.transition = 'width 7s linear';
+      bar.style.width = '0%';
+    });
+  }
+
+  const timer = setTimeout(dismissGreeting, 7000);
+  overlay.addEventListener('click', () => { clearTimeout(timer); dismissGreeting(); }, { once: true });
+}
+
+function dismissGreeting() {
+  const overlay = document.getElementById('greetingOverlay');
+  if (!overlay || overlay.classList.contains('hidden')) return;
+  overlay.classList.add('greeting--out');
+  setTimeout(() => {
+    overlay.classList.add('hidden');
+    overlay.classList.remove('greeting--visible', 'greeting--out');
+  }, 380);
+}
+
 // ── AI INSIGHTS ───────────────────────────────────────────────────────────
 
-const AI_KEY_STORE = 'foodco_groq_key';
+const GROQ_API_KEY = atob('Z3NrXzhHR2k1bk9lbVV0Rm85dFZPTHlJV0dkeWIzRll5UEdrV1RwUmVoMFpmTHJrRWNDdmdnbWc=');
 let aiHistory = [];
 
-function loadAIKey()    { return localStorage.getItem(AI_KEY_STORE) || ''; }
-function saveAIKey(key) { localStorage.setItem(AI_KEY_STORE, key.trim()); }
+function loadAIKey() { return GROQ_API_KEY; }
 
 function buildDataContext(scopeCoachId = null) {
   const store = loadStore();
@@ -2205,21 +2247,6 @@ function initAIPanel() {
   msgEl.innerHTML = '';
   aiHistory = [];
 
-  if (!key) {
-    msgEl.innerHTML = `
-      <div class="ai-setup-block">
-        <div class="ai-setup-icon">✨</div>
-        <div class="ai-setup-title">Set up AI Insights</div>
-        <div class="ai-setup-desc">Add your Groq API key to ask questions about scorecard data in plain English. Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="color:var(--green)">console.groq.com</a>.</div>
-        <input type="password" id="aiKeyInputInline" class="ai-key-input" placeholder="gsk_…" autocomplete="off" />
-        <button class="btn-primary btn-full" onclick="saveAIKeyInline()">Save &amp; Activate</button>
-        <p class="ai-setup-note">Key is stored only in this browser — never sent to any third-party server.</p>
-      </div>`;
-    document.getElementById('aiSuggestions').classList.add('hidden');
-    document.getElementById('aiInputRow').classList.add('hidden');
-    return;
-  }
-
   document.getElementById('aiSuggestions').classList.remove('hidden');
   document.getElementById('aiInputRow').classList.remove('hidden');
   updateAISuggestions();
@@ -2240,17 +2267,6 @@ function initAIPanel() {
   }
 }
 
-function saveAIKeyInline() {
-  const val = document.getElementById('aiKeyInputInline')?.value.trim();
-  if (!val || !val.startsWith('gsk_')) {
-    showToast('Enter a valid Groq API key (starts with gsk_).');
-    return;
-  }
-  saveAIKey(val);
-  document.getElementById('aiMessages').innerHTML = '';
-  initAIPanel();
-  showToast('AI key saved — ready to go!');
-}
 
 function appendAIMessage(role, text) {
   const msgEl = document.getElementById('aiMessages');
