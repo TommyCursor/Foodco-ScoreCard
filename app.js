@@ -1822,6 +1822,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('pinError').classList.add('hidden');
       document.getElementById('pinInput').value = '';
       isHSOMode = true;
+      hasShownGreeting = false;
       aiHistory = [];
       renderAdminCoachList();
       const clientId = loadStore().googleClientId;
@@ -1829,6 +1830,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('headerActions').innerHTML =
         `<span class="header-role-badge header-role-badge--admin">🔐 HSO Admin</span>`;
       navigate('adminView');
+      setTimeout(() => showHSOGreeting(), 800);
     } else {
       document.getElementById('pinError').classList.remove('hidden');
       const pi = document.getElementById('pinInput');
@@ -2115,22 +2117,12 @@ function getWATGreeting() {
   return 'Good evening';
 }
 
-function showCoachGreeting(coach) {
-  if (hasShownGreeting) return;
-  hasShownGreeting = true;
-
-  const firstName  = coach.name.split(' ')[0];
-  const greeting   = getWATGreeting();
-  const overlay    = document.getElementById('greetingOverlay');
+function showGreetingPopup(title, bodyHTML) {
+  const overlay = document.getElementById('greetingOverlay');
   if (!overlay) return;
 
-  document.getElementById('greetingTitle').textContent = `${greeting}, ${firstName}.`;
-  document.getElementById('greetingBody').innerHTML =
-    `I'm your <strong>Foodco Virtual Assistant</strong> — built specifically for this platform and ` +
-    `trained on Foodco's operational processes, KPI framework, and performance standards. ` +
-    `Whether you need help understanding your scorecard, analysing your trends, or preparing for ` +
-    `a quarterly review, I'm always available. Tap the <strong>AI</strong> button at the bottom ` +
-    `right of your screen anytime to get started.`;
+  document.getElementById('greetingTitle').textContent = title;
+  document.getElementById('greetingBody').innerHTML = bodyHTML;
 
   overlay.classList.remove('hidden');
 
@@ -2142,14 +2134,46 @@ function showCoachGreeting(coach) {
       bar.style.transition = 'none';
       bar.style.width = '100%';
       setTimeout(() => {
-        bar.style.transition = 'width 7s linear';
+        bar.style.transition = 'width 12s linear';
         bar.style.width = '0%';
       }, 50);
     }
   }, 30);
 
-  const timer = setTimeout(dismissGreeting, 7200);
+  const timer = setTimeout(dismissGreeting, 12500);
   overlay.addEventListener('click', () => { clearTimeout(timer); dismissGreeting(); }, { once: true });
+}
+
+function showCoachGreeting(coach) {
+  if (hasShownGreeting) return;
+  hasShownGreeting = true;
+
+  const firstName = coach.name.split(' ')[0];
+  const greeting  = getWATGreeting();
+
+  showGreetingPopup(
+    `${greeting}, ${firstName}.`,
+    `I'm your <strong>Foodco Virtual Assistant</strong> — built specifically for this platform and ` +
+    `trained on Foodco's operational processes, KPI framework, and performance standards. ` +
+    `Whether you need help understanding your scorecard, analysing your trends, or preparing for ` +
+    `a quarterly review, I'm always available. Tap the <strong>AI</strong> button at the bottom ` +
+    `right of your screen anytime to get started.`
+  );
+}
+
+function showHSOGreeting() {
+  if (hasShownGreeting) return;
+  hasShownGreeting = true;
+
+  const greeting = getWATGreeting();
+
+  showGreetingPopup(
+    `${greeting}, HSO Admin.`,
+    `Welcome to your <strong>Foodco Scorecard Dashboard</strong>. You have full visibility across all ` +
+    `Area Coaches and their performance data. Use the <strong>AI</strong> button at the bottom right ` +
+    `to analyse trends, compare coach performance, generate insights, or prepare for quarterly reviews. ` +
+    `All data is scoped to give you the complete picture.`
+  );
 }
 
 function dismissGreeting() {
