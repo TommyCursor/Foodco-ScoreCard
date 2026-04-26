@@ -2133,20 +2133,22 @@ function showCoachGreeting(coach) {
     `right of your screen anytime to get started.`;
 
   overlay.classList.remove('hidden');
-  void overlay.offsetWidth;
-  overlay.classList.add('greeting--visible');
 
-  const bar = document.getElementById('greetingProgress');
-  if (bar) {
-    bar.style.transition = 'none';
-    bar.style.width = '100%';
-    requestAnimationFrame(() => {
-      bar.style.transition = 'width 7s linear';
-      bar.style.width = '0%';
-    });
-  }
+  setTimeout(() => {
+    overlay.classList.add('greeting--visible');
 
-  const timer = setTimeout(dismissGreeting, 7000);
+    const bar = document.getElementById('greetingProgress');
+    if (bar) {
+      bar.style.transition = 'none';
+      bar.style.width = '100%';
+      setTimeout(() => {
+        bar.style.transition = 'width 7s linear';
+        bar.style.width = '0%';
+      }, 50);
+    }
+  }, 30);
+
+  const timer = setTimeout(dismissGreeting, 7200);
   overlay.addEventListener('click', () => { clearTimeout(timer); dismissGreeting(); }, { once: true });
 }
 
