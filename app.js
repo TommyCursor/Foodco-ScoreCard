@@ -1970,7 +1970,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     showView('landingView');
   });
 
-  // Forgot password modal handlers
+  // Forgot password — HSO only
   const forgotModal = document.getElementById('forgotPasswordModal');
   function openForgotModal(prefillId) {
     const prefill = document.getElementById(prefillId)?.value.trim() || '';
@@ -1978,10 +1978,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('resetMsg').classList.add('hidden');
     forgotModal.classList.remove('hidden');
   }
-  document.getElementById('forgotPasswordHso').addEventListener('click',   () => openForgotModal('hsoEmail'));
-  document.getElementById('forgotPasswordCoach').addEventListener('click', () => openForgotModal('coachEmail'));
+  document.getElementById('forgotPasswordHso').addEventListener('click', () => openForgotModal('hsoEmail'));
   document.getElementById('cancelResetBtn').addEventListener('click', () => forgotModal.classList.add('hidden'));
   forgotModal.addEventListener('click', e => { if (e.target === forgotModal) forgotModal.classList.add('hidden'); });
+
+  // Force password change — shown after coach logs in with HSO-set password
+  document.getElementById('forcePasswordBtn').addEventListener('click', async () => {
+    const newPass     = document.getElementById('forceNewPassword').value;
+    const confirmPass = document.getElementById('forceConfirmPassword').value;
+    const errEl       = document.getElementById('forcePasswordError');
+    const btn         = document.getElementById('forcePasswordBtn');
+
+    if (newPass.length < 6) {
+      errEl.textContent = 'Password must be at least 6 characters.';
+      errEl.classList.remove('hidden'); return;
+    }
+    if (newPass !== confirmPass) {
+      errEl.textContent = 'Passwords do not match.';
+      errEl.classList.remove('hidden'); return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Saving…';
+    const { error } = await sb.auth.updateUser({
+      password: newPass,
+      data: { must_change_password: false },
+    });
+    btn.disabled = false; btn.textContent = 'Set Password & Continue →';
+
+    if (error) {
+      errEl.textContent = error.message;
+      errEl.classList.remove('hidden'); return;
+    }
+
+    showToast('Password set. Welcome!');
+    renderCoachHome();
+    navigate('coachHomeView');
+    setTimeout(() => showCoachGreeting(currentCoach), 800);
+  });
 
   document.getElementById('sendResetBtn').addEventListener('click', async () => {
     const email = document.getElementById('resetEmail').value.trim();
@@ -2191,6 +2224,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('coachPassword').value = '';
     currentCoach = coach;
     isHSOMode = false; aiHistory = []; hasShownGreeting = false;
+
+    if (data.user.user_metadata?.must_change_password) {
+      navigate('forcePasswordChangeView');
+      return;
+    }
+
     renderCoachHome();
     navigate('coachHomeView');
     setTimeout(() => showCoachGreeting(coach), 800);

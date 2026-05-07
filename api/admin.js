@@ -37,7 +37,7 @@ export default async function handler(req) {
         email,
         password,
         email_confirm: true,
-        user_metadata: { role: 'coach', name, coachId },
+        user_metadata: { role: 'coach', name, coachId, must_change_password: true },
       }),
     });
     const data = await res.json();
@@ -60,7 +60,7 @@ export default async function handler(req) {
         'apikey': serviceRoleKey,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, user_metadata: { must_change_password: true } }),
     });
     const data = await res.json();
     return new Response(JSON.stringify(data), { status: res.status, headers: { 'Content-Type': 'application/json' } });

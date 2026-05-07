@@ -327,8 +327,7 @@
     </div>
     <div id="coachLoginError" class="form-error hidden"></div>
     <button class="btn-primary btn-full" id="coachLoginBtn">Sign In →</button>
-    <button class="btn-link" id="forgotPasswordCoach" style="margin-top:8px;">Forgot password?</button>
-    <p class="hint-text">No account? Contact your HSO to get access.</p>
+    <p class="hint-text">Forgot your password? Contact your HSO to reset it.</p>
     <button class="btn-link" id="backFromCoachSelect">← Back</button>
   </div>
 </div>
@@ -654,6 +653,25 @@
       <button class="btn-primary" id="sendResetBtn">Send Reset Link</button>
       <button class="btn-ghost" id="cancelResetBtn">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- ══ FORCE PASSWORD CHANGE ════════════════════════════════════════════════ -->
+<div id="forcePasswordChangeView" class="view fill-center hidden">
+  <div class="center-card center-card--narrow">
+    <div class="pin-icon">🔑</div>
+    <h2 class="card-title">Set Your Password</h2>
+    <p class="card-sub">Your password was set by your HSO. You must create your own private password before you can continue.</p>
+    <div class="field" style="margin:20px 0 12px;">
+      <label for="forceNewPassword">New Password</label>
+      <input type="password" id="forceNewPassword" placeholder="Min 6 characters" minlength="6" />
+    </div>
+    <div class="field" style="margin-bottom:16px;">
+      <label for="forceConfirmPassword">Confirm Password</label>
+      <input type="password" id="forceConfirmPassword" placeholder="Repeat new password" />
+    </div>
+    <div id="forcePasswordError" class="form-error hidden"></div>
+    <button class="btn-primary btn-full" id="forcePasswordBtn">Set Password &amp; Continue →</button>
   </div>
 </div>
 
