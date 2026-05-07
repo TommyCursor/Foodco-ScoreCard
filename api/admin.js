@@ -52,18 +52,32 @@ export default async function handler(req) {
     return new Response(JSON.stringify({ success: res.ok }), { status: res.status, headers: { 'Content-Type': 'application/json' } });
   }
 
-  if (action === 'reset_password') {
-    const res = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-      method: 'PUT',
+  if (action === 'trigger_password_reset') {
+    // Look up coach's email from their userId
+    const userRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
+      headers: { 'Authorization': `Bearer ${serviceRoleKey}`, 'apikey': serviceRoleKey },
+    });
+    const user = await userRes.json();
+    if (!userRes.ok || !user.email) {
+      return new Response(JSON.stringify({ error: { message: 'User not found' } }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // Generate recovery link — Supabase sends the reset email automatically
+    const linkRes = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${serviceRoleKey}`,
         'apikey': serviceRoleKey,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ password, user_metadata: { must_change_password: true } }),
+      body: JSON.stringify({
+        type: 'recovery',
+        email: user.email,
+        options: { redirect_to: 'https://foodco-global.vercel.app' },
+      }),
     });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), { status: res.status, headers: { 'Content-Type': 'application/json' } });
+    const linkData = await linkRes.json();
+    return new Response(JSON.stringify(linkData), { status: linkRes.status, headers: { 'Content-Type': 'application/json' } });
   }
 
   return new Response(JSON.stringify({ error: 'Unknown action' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
