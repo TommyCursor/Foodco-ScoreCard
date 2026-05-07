@@ -696,7 +696,16 @@ function renderAdminCoachList() {
           </div>
         </div>
         <div class="coach-actions">
+          <button class="btn-ghost" onclick="toggleResetPassword('${c.id}')">Reset Password</button>
           <button class="btn-ghost btn-danger" onclick="confirmDeleteCoach('${c.id}','${esc(c.name).replace(/'/g,"\\'")}')">Delete</button>
+        </div>
+        <div class="coach-reset-editor hidden" id="coach-reset-editor-${c.id}">
+          <input type="password" class="coach-target-input" id="coach-reset-input-${c.id}"
+            placeholder="New temporary password (min 6 chars)" minlength="6" />
+          <button class="btn-primary" style="padding:6px 14px;font-size:0.8rem"
+            onclick="saveCoachPassword('${c.id}')">Set Password</button>
+          <button class="btn-ghost" style="padding:6px 10px;font-size:0.8rem"
+            onclick="toggleResetPassword('${c.id}')">Cancel</button>
         </div>
       </div>`;
   }).join('');
@@ -704,6 +713,43 @@ function renderAdminCoachList() {
 
 function toggleTargetEditor(coachId) {
   document.getElementById(`coach-target-editor-${coachId}`)?.classList.toggle('hidden');
+}
+
+function toggleResetPassword(coachId) {
+  const el = document.getElementById(`coach-reset-editor-${coachId}`);
+  if (!el) return;
+  el.classList.toggle('hidden');
+  if (!el.classList.contains('hidden')) {
+    document.getElementById(`coach-reset-input-${coachId}`)?.focus();
+  }
+}
+
+async function saveCoachPassword(coachId) {
+  const input = document.getElementById(`coach-reset-input-${coachId}`);
+  const password = input?.value.trim();
+  if (!password || password.length < 6) {
+    showToast('Password must be at least 6 characters.');
+    return;
+  }
+
+  const coach = _cache.coaches.find(c => c.id === coachId);
+  if (!coach?.userId) {
+    showToast('No login account linked to this coach.');
+    return;
+  }
+
+  input.disabled = true;
+  try {
+    const result = await dbAdminCall({ action: 'reset_password', userId: coach.userId, password });
+    if (result.error) throw new Error(result.error.message);
+    toggleResetPassword(coachId);
+    input.value = '';
+    showToast(`Password reset for ${coach.name}.`);
+  } catch (e) {
+    showToast(e.message || 'Failed to reset password.');
+  } finally {
+    input.disabled = false;
+  }
 }
 
 async function saveCoachTarget(coachId) {
