@@ -228,24 +228,126 @@ const KPI_CONFIG = [
 
 const ALL_FIELD_IDS = KPI_CONFIG.flatMap(k => k.fields.map(f => f.id));
 
-// ── Storage ────────────────────────────────────────────────────────────────
+// ── Supabase ───────────────────────────────────────────────────────────────
 
-const STORE_KEY = 'foodco_data';
+const SUPABASE_URL  = 'https://ifrefyugccczydjjfrzm.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcmVmeXVnY2NjenlkampmcnptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMzc1MjAsImV4cCI6MjA5MzcxMzUyMH0.O9trwo_xBDT0LgKSjKAj80Qe3oZ__EcYEePMA6qxIJs';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-function loadStore() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORE_KEY));
-    return saved ? { ...defaultStore(), ...saved } : defaultStore();
-  } catch { return defaultStore(); }
-}
+// ── Storage — in-memory cache backed by Supabase ───────────────────────────
 
-function defaultStore() {
-  return { hsoPin: '1234', googleClientId: '', coaches: [], scorecards: [] };
-}
+let _cache = { coaches: [], scorecards: [], googleClientId: '' };
 
-function saveStore(data) { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
+function loadStore() { return _cache; }
+function saveStore() { /* mutations go through dedicated db* functions */ }
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+
+async function loadAppState() {
+  const [c, s, st] = await Promise.all([
+    sb.from('coaches').select('*'),
+    sb.from('scorecards').select('*'),
+    sb.from('settings').select('*'),
+  ]);
+  _cache.coaches = (c.data || []).map(r => ({
+    id: r.id, name: r.name, branches: r.branches || '',
+    salesTarget: r.sales_target || null, userId: r.user_id,
+  }));
+  _cache.scorecards = (s.data || []).map(r => ({
+    id: r.id, coachId: r.coach_id, period: r.period,
+    total: r.total, rating: r.rating, rows: r.rows || [],
+    fieldData: r.field_data || {}, coachNote: r.coach_note || '',
+    hsoNotes: r.hso_notes || '', generatedAt: r.generated_at,
+  }));
+  _cache.googleClientId = (st.data || []).find(x => x.key === 'google_client_id')?.value || '';
+}
+
+// ── DB helpers ─────────────────────────────────────────────────────────────
+
+async function getAccessToken() {
+  const { data } = await sb.auth.getSession();
+  return data.session?.access_token;
+}
+
+async function dbAdminCall(body) {
+  const token = await getAccessToken();
+  const res = await fetch('/api/admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+async function dbAddCoach(name, branches, email, password) {
+  const result = await dbAdminCall({ action: 'create_user', email, password, name });
+  if (result.error) throw new Error(result.error.message || 'Failed to create user account.');
+
+  const userId = result.id;
+  const { data, error } = await sb.from('coaches').insert({ user_id: userId, name, branches }).select().single();
+  if (error) throw error;
+
+  // update user metadata with coach id
+  await dbAdminCall({ action: 'reset_password', userId, password, name, coachId: data.id });
+
+  const coach = { id: data.id, name: data.name, branches: data.branches || '', salesTarget: null, userId };
+  _cache.coaches.push(coach);
+  return coach;
+}
+
+async function dbDeleteCoach(coachId) {
+  const coach = _cache.coaches.find(c => c.id === coachId);
+  if (!coach) return;
+  if (coach.userId) await dbAdminCall({ action: 'delete_user', userId: coach.userId });
+  await sb.from('coaches').delete().eq('id', coachId);
+  _cache.coaches    = _cache.coaches.filter(c => c.id !== coachId);
+  _cache.scorecards = _cache.scorecards.filter(s => s.coachId !== coachId);
+}
+
+async function dbUpdateCoachTarget(coachId, target) {
+  const { error } = await sb.from('coaches').update({ sales_target: target || null }).eq('id', coachId);
+  if (!error) {
+    const c = _cache.coaches.find(x => x.id === coachId);
+    if (c) c.salesTarget = target || null;
+  }
+}
+
+async function dbSaveScorecard(sc) {
+  const payload = {
+    coach_id: sc.coachId, period: sc.period, total: sc.total,
+    rating: sc.rating, rows: sc.rows, field_data: sc.fieldData,
+    coach_note: sc.coachNote || '', generated_at: sc.generatedAt || new Date().toISOString(),
+  };
+  if (sc.id) payload.id = sc.id;
+
+  const { data, error } = await sb.from('scorecards')
+    .upsert(payload, { onConflict: 'coach_id,period' })
+    .select().single();
+  if (error) throw error;
+
+  const mapped = {
+    id: data.id, coachId: data.coach_id, period: data.period,
+    total: data.total, rating: data.rating, rows: data.rows || [],
+    fieldData: data.field_data || {}, coachNote: data.coach_note || '',
+    hsoNotes: data.hso_notes || '', generatedAt: data.generated_at,
+  };
+  const idx = _cache.scorecards.findIndex(x => x.id === mapped.id || (x.coachId === mapped.coachId && x.period === mapped.period));
+  if (idx >= 0) _cache.scorecards[idx] = mapped; else _cache.scorecards.push(mapped);
+  return mapped;
+}
+
+async function dbSaveCoachingNotes(scorecardId, notes) {
+  const { error } = await sb.from('scorecards').update({ hso_notes: notes }).eq('id', scorecardId);
+  if (!error) {
+    const sc = _cache.scorecards.find(x => x.id === scorecardId);
+    if (sc) sc.hsoNotes = notes;
+  }
+}
+
+async function dbSaveSetting(key, value) {
+  await sb.from('settings').upsert({ key, value }, { onConflict: 'key' });
+  if (key === 'google_client_id') _cache.googleClientId = value;
+}
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -547,11 +649,6 @@ function adminViewCoach(coachId) {
   viewSavedScorecard(entries[0].id, 'adminView');
 }
 
-// ── HSO PIN ────────────────────────────────────────────────────────────────
-
-function verifyPin(entered) {
-  return entered === loadStore().hsoPin;
-}
 
 // ── Admin ──────────────────────────────────────────────────────────────────
 
@@ -609,15 +706,16 @@ function toggleTargetEditor(coachId) {
   document.getElementById(`coach-target-editor-${coachId}`)?.classList.toggle('hidden');
 }
 
-function saveCoachTarget(coachId) {
-  const val  = parseFloat(document.getElementById(`coach-target-input-${coachId}`)?.value) || 0;
-  const data = loadStore();
-  const coach = data.coaches.find(c => c.id === coachId);
-  if (!coach) return;
-  coach.salesTarget = val || null;
-  saveStore(data);
-  renderAdminCoachList();
-  showToast(val ? `Target set to R ${val.toLocaleString('en-ZA')}` : 'Target cleared.');
+async function saveCoachTarget(coachId) {
+  const val = parseFloat(document.getElementById(`coach-target-input-${coachId}`)?.value) || 0;
+  try {
+    await dbUpdateCoachTarget(coachId, val);
+    toggleTargetEditor(coachId);
+    renderAdminCoachList();
+    showToast(val ? `Target set to R ${val.toLocaleString('en-ZA')}` : 'Target cleared.');
+  } catch (e) {
+    showToast('Failed to save target. Please try again.');
+  }
 }
 
 function prefillSalesTarget() {
@@ -629,15 +727,14 @@ function prefillSalesTarget() {
   }
 }
 
-function confirmDeleteCoach(id, name) {
-  if (confirm(`Delete coach "${name}" and all their scorecards?`)) {
-    const data = loadStore();
-    data.coaches    = data.coaches.filter(c => c.id !== id);
-    data.scorecards = data.scorecards.filter(s => s.coachId !== id);
-    saveStore(data);
+async function confirmDeleteCoach(id, name) {
+  if (!confirm(`Delete coach "${name}" and all their scorecards?`)) return;
+  try {
+    await dbDeleteCoach(id);
     renderAdminCoachList();
-    populateCoachLoginSelect();
     showToast(`"${name}" deleted.`);
+  } catch (e) {
+    showToast('Failed to delete coach. Please try again.');
   }
 }
 
@@ -674,15 +771,6 @@ function renderAllScorecards() {
     }).join('');
 }
 
-// ── Coach Select ───────────────────────────────────────────────────────────
-
-function populateCoachLoginSelect() {
-  const coaches = loadStore().coaches;
-  const sel = document.getElementById('coachLoginSelect');
-  sel.innerHTML = `<option value="">— Select your name —</option>` +
-    coaches.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  document.getElementById('coachLoginBtn').disabled = true;
-}
 
 // ── Coach Home ─────────────────────────────────────────────────────────────
 
@@ -832,36 +920,32 @@ function collectManualForm() {
   return d;
 }
 
-function handleGenerateEntry() {
+async function handleGenerateEntry() {
   const period = document.getElementById('entryPeriod').value;
   if (!period) { showToast('Please select a period first.'); return; }
 
   const fieldData  = collectManualForm();
   const { rows, total, rating } = computeScorecard(fieldData);
-
   const coachNote = document.getElementById('coachNoteInput')?.value.trim() || '';
 
-  const scorecard = {
-    id: uid(),
-    coachId: currentCoach.id,
-    period,
-    total,
-    rating,
-    rows,
-    fieldData,
-    coachNote,
-    generatedAt: new Date().toISOString()
-  };
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
 
-  const data = loadStore();
-  // Replace existing scorecard for same coach+period if any
-  data.scorecards = data.scorecards.filter(s => !(s.coachId === currentCoach.id && s.period === period));
-  data.scorecards.push(scorecard);
-  saveStore(data);
-
-  showToast('Scorecard saved!');
-  resultsBackDest = 'coachHomeView';
-  displayResults(scorecard);
+  try {
+    const saved = await dbSaveScorecard({
+      coachId: currentCoach.id, period, total, rating, rows,
+      fieldData, coachNote, generatedAt: new Date().toISOString(),
+    });
+    showToast('Scorecard saved!');
+    resultsBackDest = 'coachHomeView';
+    displayResults(saved);
+  } catch (e) {
+    showToast('Failed to save scorecard. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate & Save →';
+  }
 }
 
 // ── Narrative ──────────────────────────────────────────────────────────────
@@ -1154,13 +1238,9 @@ function renderCoachingNotes(s) {
   }
 }
 
-function saveCoachingNotes(scorecardId) {
+async function saveCoachingNotes(scorecardId) {
   const notes = document.getElementById('coachingNotesInput')?.value.trim() || '';
-  const data  = loadStore();
-  const sc    = data.scorecards.find(x => x.id === scorecardId);
-  if (!sc) return;
-  sc.hsoNotes = notes;
-  saveStore(data);
+  await dbSaveCoachingNotes(scorecardId, notes);
   const msg = document.getElementById('coachingNotesSaveMsg');
   if (msg) { msg.classList.remove('hidden'); setTimeout(() => msg.classList.add('hidden'), 2500); }
 }
@@ -1805,39 +1885,67 @@ function showToast(msg) {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+
+  // Restore existing session on page load
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) {
+    const role = session.user.user_metadata?.role;
+    await loadAppState();
+    if (role === 'hso') {
+      isHSOMode = true;
+      renderAdminCoachList();
+      document.getElementById('googleClientIdInput').value = _cache.googleClientId;
+      document.getElementById('headerActions').innerHTML =
+        `<span class="header-role-badge header-role-badge--admin">🔐 HSO Admin</span>`;
+      showView('adminView');
+    } else {
+      const coach = _cache.coaches.find(c => c.userId === session.user.id);
+      if (coach) {
+        currentCoach = coach;
+        renderCoachHome();
+        showView('coachHomeView');
+      }
+    }
+  }
 
   // Landing
   document.getElementById('hsoRoleBtn').addEventListener('click', () => navigate('hsoPinView'));
-  document.getElementById('coachRoleBtn').addEventListener('click', () => {
-    populateCoachLoginSelect();
-    navigate('coachSelectView');
-  });
+  document.getElementById('coachRoleBtn').addEventListener('click', () => navigate('coachSelectView'));
 
-  // HSO PIN
-  document.getElementById('pinForm').addEventListener('submit', e => {
+  // HSO Login
+  document.getElementById('pinForm').addEventListener('submit', async e => {
     e.preventDefault();
-    const val = document.getElementById('pinInput').value;
-    if (verifyPin(val)) {
-      document.getElementById('pinError').classList.add('hidden');
-      document.getElementById('pinInput').value = '';
-      isHSOMode = true;
-      hasShownGreeting = false;
-      aiHistory = [];
-      renderAdminCoachList();
-      const clientId = loadStore().googleClientId;
-      document.getElementById('googleClientIdInput').value = clientId;
-      document.getElementById('headerActions').innerHTML =
-        `<span class="header-role-badge header-role-badge--admin">🔐 HSO Admin</span>`;
-      navigate('adminView');
-      setTimeout(() => showHSOGreeting(), 800);
-    } else {
-      document.getElementById('pinError').classList.remove('hidden');
-      const pi = document.getElementById('pinInput');
-      pi.classList.remove('shake');
-      void pi.offsetWidth;
-      pi.classList.add('shake');
+    const email    = document.getElementById('hsoEmail').value.trim();
+    const password = document.getElementById('hsoPassword').value;
+    const errEl    = document.getElementById('pinError');
+    const btn      = document.getElementById('hsoSignInBtn');
+
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    errEl.classList.add('hidden');
+
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    btn.disabled = false; btn.textContent = 'Sign In →';
+
+    if (error || !data.user) {
+      errEl.textContent = 'Incorrect email or password.';
+      errEl.classList.remove('hidden'); return;
     }
+    if (data.user.user_metadata?.role !== 'hso') {
+      errEl.textContent = 'This account does not have HSO admin access.';
+      errEl.classList.remove('hidden');
+      await sb.auth.signOut(); return;
+    }
+
+    document.getElementById('hsoPassword').value = '';
+    await loadAppState();
+    isHSOMode = true; hasShownGreeting = false; aiHistory = [];
+    renderAdminCoachList();
+    document.getElementById('googleClientIdInput').value = _cache.googleClientId;
+    document.getElementById('headerActions').innerHTML =
+      `<span class="header-role-badge header-role-badge--admin">🔐 HSO Admin</span>`;
+    navigate('adminView');
+    setTimeout(() => showHSOGreeting(), 800);
   });
   document.getElementById('backFromPin').addEventListener('click', goBack);
 
@@ -1846,50 +1954,66 @@ document.addEventListener('DOMContentLoaded', () => {
     t.addEventListener('click', () => switchAdminTab(t.dataset.atab)));
 
   // Admin – add coach
-  document.getElementById('addCoachForm').addEventListener('submit', e => {
+  document.getElementById('addCoachForm').addEventListener('submit', async e => {
     e.preventDefault();
     const name     = document.getElementById('newCoachName').value.trim();
     const branches = document.getElementById('newCoachBranches').value.trim();
-    if (!name) return;
-    const data = loadStore();
-    data.coaches.push({ id: uid(), name, branches });
-    saveStore(data);
-    document.getElementById('addCoachForm').reset();
-    renderAdminCoachList();
-    showToast(`"${name}" added.`);
+    const email    = document.getElementById('newCoachEmail').value.trim();
+    const password = document.getElementById('newCoachTempPassword').value;
+    if (!name || !email || !password) return;
+
+    const btn = document.getElementById('addCoachBtn');
+    btn.disabled = true; btn.textContent = 'Adding…';
+
+    try {
+      await dbAddCoach(name, branches, email, password);
+      document.getElementById('addCoachForm').reset();
+      renderAdminCoachList();
+      showToast(`"${name}" added — share their credentials.`);
+    } catch (err) {
+      showToast(err.message || 'Failed to add coach.');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Add Coach';
+    }
   });
 
-  // Admin – change PIN
-  document.getElementById('changePinForm').addEventListener('submit', e => {
+  // Admin – change password
+  document.getElementById('changePinForm').addEventListener('submit', async e => {
     e.preventDefault();
     const current = document.getElementById('currentPin').value;
     const next    = document.getElementById('newPin').value;
     const msgEl   = document.getElementById('pinChangeMsg');
-    if (!verifyPin(current)) {
-      msgEl.textContent = 'Current PIN is incorrect.';
-      msgEl.classList.remove('hidden');
-      return;
+
+    if (next.length < 6) {
+      msgEl.textContent = 'New password must be at least 6 characters.';
+      msgEl.classList.remove('hidden'); return;
     }
-    if (next.length < 4) {
-      msgEl.textContent = 'New PIN must be at least 4 characters.';
-      msgEl.classList.remove('hidden');
-      return;
+
+    const { data: { session } } = await sb.auth.getSession();
+    const { error: verifyErr } = await sb.auth.signInWithPassword({
+      email: session?.user?.email, password: current,
+    });
+    if (verifyErr) {
+      msgEl.textContent = 'Current password is incorrect.';
+      msgEl.classList.remove('hidden'); return;
     }
-    const data = loadStore();
-    data.hsoPin = next;
-    saveStore(data);
+
+    const { error } = await sb.auth.updateUser({ password: next });
+    if (error) {
+      msgEl.textContent = error.message;
+      msgEl.classList.remove('hidden'); return;
+    }
+
     msgEl.classList.add('hidden');
     document.getElementById('changePinForm').reset();
-    showToast('PIN updated successfully.');
+    showToast('Password updated successfully.');
   });
 
   // Admin – Google Client ID
-  document.getElementById('clientIdForm').addEventListener('submit', e => {
+  document.getElementById('clientIdForm').addEventListener('submit', async e => {
     e.preventDefault();
     const id = document.getElementById('googleClientIdInput').value.trim();
-    const data = loadStore();
-    data.googleClientId = id;
-    saveStore(data);
+    await dbSaveSetting('google_client_id', id);
     showToast('Client ID saved.');
   });
 
@@ -1900,29 +2024,65 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('qrGenerateBtn').addEventListener('click', generateQuarterlyReport);
 
   // Admin – exit
-  document.getElementById('exitAdminBtn').addEventListener('click', () => {
+  document.getElementById('exitAdminBtn').addEventListener('click', async () => {
+    await sb.auth.signOut();
     isHSOMode = false;
+    _cache = { coaches: [], scorecards: [], googleClientId: '' };
     aiHistory = [];
     navStack = [];
     document.getElementById('headerActions').innerHTML = '';
     showView('landingView');
   });
 
-  // Coach select
-  document.getElementById('coachLoginSelect').addEventListener('change', e => {
-    document.getElementById('coachLoginBtn').disabled = !e.target.value;
-  });
-  document.getElementById('coachLoginBtn').addEventListener('click', () => {
-    const id = document.getElementById('coachLoginSelect').value;
-    const coach = loadStore().coaches.find(c => c.id === id);
-    if (!coach) return;
+  // Coach Login
+  document.getElementById('coachLoginBtn').addEventListener('click', async () => {
+    const email    = document.getElementById('coachEmail').value.trim();
+    const password = document.getElementById('coachPassword').value;
+    const errEl    = document.getElementById('coachLoginError');
+    const btn      = document.getElementById('coachLoginBtn');
+
+    if (!email || !password) {
+      errEl.textContent = 'Please enter your email and password.';
+      errEl.classList.remove('hidden'); return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    errEl.classList.add('hidden');
+
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    btn.disabled = false; btn.textContent = 'Sign In →';
+
+    if (error || !data.user) {
+      errEl.textContent = 'Incorrect email or password.';
+      errEl.classList.remove('hidden'); return;
+    }
+    if (data.user.user_metadata?.role === 'hso') {
+      errEl.textContent = 'Please use the HSO Admin login instead.';
+      errEl.classList.remove('hidden');
+      await sb.auth.signOut(); return;
+    }
+
+    await loadAppState();
+    const coach = _cache.coaches.find(c => c.userId === data.user.id);
+    if (!coach) {
+      errEl.textContent = 'No coach profile found. Contact your HSO.';
+      errEl.classList.remove('hidden');
+      await sb.auth.signOut(); return;
+    }
+
+    document.getElementById('coachPassword').value = '';
     currentCoach = coach;
-    isHSOMode = false;
-    aiHistory = [];
-    hasShownGreeting = false;
+    isHSOMode = false; aiHistory = []; hasShownGreeting = false;
     renderCoachHome();
     navigate('coachHomeView');
     setTimeout(() => showCoachGreeting(coach), 800);
+  });
+
+  document.getElementById('coachEmail').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('coachLoginBtn').click();
+  });
+  document.getElementById('coachPassword').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('coachLoginBtn').click();
   });
   document.getElementById('backFromCoachSelect').addEventListener('click', goBack);
 
@@ -1978,15 +2138,18 @@ document.addEventListener('DOMContentLoaded', () => {
     navigate('coachLeaderboardView');
   });
   document.getElementById('backFromCoachLb').addEventListener('click', goBack);
-  document.getElementById('changeUserBtn').addEventListener('click', () => {
+  document.getElementById('changeUserBtn').addEventListener('click', async () => {
+    await sb.auth.signOut();
     currentCoach = null;
     isHSOMode = false;
+    _cache = { coaches: [], scorecards: [], googleClientId: '' };
     aiHistory = [];
     hasShownGreeting = false;
     navStack = [];
     document.getElementById('headerActions').innerHTML = '';
-    populateCoachLoginSelect();
-    showView('coachSelectView');
+    document.getElementById('coachEmail').value = '';
+    document.getElementById('coachPassword').value = '';
+    showView('landingView');
   });
 
   // Data entry – projected score (delegated listener on the form container)

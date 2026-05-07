@@ -114,20 +114,25 @@
   </div>
 </div>
 
-<!-- ══ 2. HSO PIN ══════════════════════════════════════════════════════════ -->
+<!-- ══ 2. HSO LOGIN ═════════════════════════════════════════════════════════ -->
 <div id="hsoPinView" class="view fill-center hidden">
   <div class="center-card center-card--narrow">
     <div class="pin-icon">🔐</div>
     <h2 class="card-title">HSO Login</h2>
-    <p class="card-sub">Enter your PIN to access the admin panel.</p>
+    <p class="card-sub">Sign in with your HSO admin credentials.</p>
     <form id="pinForm">
-      <input type="password" id="pinInput" class="pin-input" placeholder="Enter PIN"
-             maxlength="10" autocomplete="off" inputmode="numeric" />
-      <div id="pinError" class="form-error hidden">Incorrect PIN. Please try again.</div>
-      <button type="submit" class="btn-primary btn-full">Enter →</button>
+      <div class="field" style="margin-bottom:12px;">
+        <label for="hsoEmail">Email</label>
+        <input type="email" id="hsoEmail" placeholder="hso@foodco.com" autocomplete="username" required />
+      </div>
+      <div class="field" style="margin-bottom:16px;">
+        <label for="hsoPassword">Password</label>
+        <input type="password" id="hsoPassword" placeholder="Password" autocomplete="current-password" required />
+      </div>
+      <div id="pinError" class="form-error hidden"></div>
+      <button type="submit" class="btn-primary btn-full" id="hsoSignInBtn">Sign In →</button>
     </form>
     <button class="btn-link" id="backFromPin">← Back</button>
-    <p class="hint-text">Default PIN is <strong>1234</strong></p>
   </div>
 </div>
 
@@ -172,8 +177,19 @@
               <input type="text" id="newCoachBranches" placeholder="e.g. CBD, Westpark, Fourways" />
             </div>
           </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="newCoachEmail">Login Email</label>
+              <input type="email" id="newCoachEmail" placeholder="coach@example.com" required />
+            </div>
+            <div class="field">
+              <label for="newCoachTempPassword">Temporary Password</label>
+              <input type="password" id="newCoachTempPassword" placeholder="Min 6 characters" minlength="6" required />
+            </div>
+          </div>
+          <p class="hint-text" style="margin:4px 0 12px;">Share these credentials directly with the coach.</p>
           <div class="form-actions">
-            <button type="submit" class="btn-primary">Add Coach</button>
+            <button type="submit" class="btn-primary" id="addCoachBtn">Add Coach</button>
           </div>
         </form>
       </div>
@@ -183,21 +199,21 @@
     <!-- Settings tab -->
     <div id="aSettings" class="atab-panel hidden">
       <div class="kpi-card">
-        <h3 class="section-label">Change HSO PIN</h3>
+        <h3 class="section-label">Change HSO Password</h3>
         <form id="changePinForm">
           <div class="field-row">
             <div class="field">
-              <label for="currentPin">Current PIN</label>
-              <input type="password" id="currentPin" placeholder="Current PIN" />
+              <label for="currentPin">Current Password</label>
+              <input type="password" id="currentPin" placeholder="Current password" />
             </div>
             <div class="field">
-              <label for="newPin">New PIN</label>
-              <input type="password" id="newPin" placeholder="New PIN (min 4 digits)" minlength="4" />
+              <label for="newPin">New Password</label>
+              <input type="password" id="newPin" placeholder="New password (min 6 chars)" minlength="6" />
             </div>
           </div>
           <div id="pinChangeMsg" class="form-error hidden"></div>
           <div class="form-actions">
-            <button type="submit" class="btn-primary">Update PIN</button>
+            <button type="submit" class="btn-primary">Update Password</button>
           </div>
         </form>
       </div>
@@ -294,19 +310,23 @@
   </div><!-- /.admin-layout -->
 </div>
 
-<!-- ══ 4. COACH SELECT ═════════════════════════════════════════════════════ -->
+<!-- ══ 4. COACH LOGIN ═══════════════════════════════════════════════════════ -->
 <div id="coachSelectView" class="view fill-center hidden">
   <div class="center-card">
     <p class="card-eyebrow">Area Coach</p>
-    <h2 class="card-title">Select your name</h2>
+    <h2 class="card-title">Sign In</h2>
+    <p class="card-sub">Use the credentials provided by your HSO.</p>
     <div class="field" style="margin:20px 0 12px;">
-      <label for="coachLoginSelect">Your Name</label>
-      <select id="coachLoginSelect">
-        <option value="">— Select your name —</option>
-      </select>
+      <label for="coachEmail">Email</label>
+      <input type="email" id="coachEmail" placeholder="your@email.com" autocomplete="username" required />
     </div>
-    <button class="btn-primary btn-full" id="coachLoginBtn" disabled>Continue →</button>
-    <p class="hint-text">Don't see your name? Contact your HSO.</p>
+    <div class="field" style="margin-bottom:16px;">
+      <label for="coachPassword">Password</label>
+      <input type="password" id="coachPassword" placeholder="Password" autocomplete="current-password" required />
+    </div>
+    <div id="coachLoginError" class="form-error hidden"></div>
+    <button class="btn-primary btn-full" id="coachLoginBtn">Sign In →</button>
+    <p class="hint-text">No account? Contact your HSO to get access.</p>
     <button class="btn-link" id="backFromCoachSelect">← Back</button>
   </div>
 </div>
@@ -651,6 +671,7 @@
   <span class="ai-fab-icon">AI</span>
 </button>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sheets.js"></script>
 <script src="app.js"></script>
 </body>
