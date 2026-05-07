@@ -2188,10 +2188,7 @@ function dismissGreeting() {
 
 // ── AI INSIGHTS ───────────────────────────────────────────────────────────
 
-const GROQ_API_KEY = atob('Z3NrXzhHR2k1bk9lbVV0Rm85dFZPTHlJV0dkeWIzRll5UEdrV1RwUmVoMFpmTHJrRWNDdmdnbWc=');
 let aiHistory = [];
-
-function loadAIKey() { return GROQ_API_KEY; }
 
 function buildDataContext(scopeCoachId = null) {
   const store = loadStore();
@@ -2268,7 +2265,6 @@ function toggleAIPanel() {
 }
 
 function initAIPanel() {
-  const key   = loadAIKey();
   const msgEl = document.getElementById('aiMessages');
   msgEl.innerHTML = '';
   aiHistory = [];
@@ -2339,9 +2335,6 @@ async function submitAIQuestion() {
   const question = input?.value.trim();
   if (!question) return;
 
-  const key = loadAIKey();
-  if (!key) { initAIPanel(); return; }
-
   document.getElementById('aiSuggestions').classList.add('hidden');
   const sendBtn  = document.getElementById('aiSendBtn');
   input.value    = '';
@@ -2364,15 +2357,10 @@ async function submitAIQuestion() {
     buildDataContext(scopeId);
 
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetch('/api/ai', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${key}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        max_tokens: 1024,
         messages: [
           { role: 'system', content: systemPrompt },
           ...aiHistory,
