@@ -316,19 +316,49 @@
   <div class="center-card">
     <p class="card-eyebrow">Area Coach</p>
     <h2 class="card-title">Sign In</h2>
-    <p class="card-sub">Use the credentials provided by your HSO.</p>
-    <div class="field" style="margin:20px 0 12px;">
-      <label for="coachEmail">Email</label>
-      <input type="email" id="coachEmail" placeholder="your@email.com" autocomplete="username" required />
+
+    <!-- Normal login -->
+    <div id="coachNormalLogin">
+      <p class="card-sub">Use the credentials provided by your HSO.</p>
+      <div class="field" style="margin:20px 0 12px;">
+        <label for="coachEmail">Email</label>
+        <input type="email" id="coachEmail" placeholder="your@email.com" autocomplete="username" />
+      </div>
+      <div class="field" style="margin-bottom:16px;">
+        <label for="coachPassword">Password</label>
+        <input type="password" id="coachPassword" placeholder="Password" autocomplete="current-password" />
+      </div>
+      <div id="coachLoginError" class="form-error hidden"></div>
+      <button class="btn-primary btn-full" id="coachLoginBtn">Sign In →</button>
+      <button class="btn-link" id="showResetCodeFormBtn" style="margin-top:10px;">Have a reset code?</button>
     </div>
-    <div class="field" style="margin-bottom:16px;">
-      <label for="coachPassword">Password</label>
-      <input type="password" id="coachPassword" placeholder="Password" autocomplete="current-password" required />
+
+    <!-- Reset code entry (shown when coach has a code from HSO) -->
+    <div id="coachResetCodeForm" class="hidden">
+      <p class="card-sub">Enter the reset code your HSO shared with you, then set your new password.</p>
+      <div class="field" style="margin:16px 0 10px;">
+        <label for="resetCodeEmail">Your Email</label>
+        <input type="email" id="resetCodeEmail" placeholder="your@email.com" />
+      </div>
+      <div class="field" style="margin-bottom:10px;">
+        <label for="resetCodeInput">Reset Code (from HSO)</label>
+        <input type="text" id="resetCodeInput" placeholder="e.g. FP7K2X" maxlength="6"
+               style="text-transform:uppercase;letter-spacing:0.15em;font-weight:700;" />
+      </div>
+      <div class="field" style="margin-bottom:10px;">
+        <label for="resetCodeNewPassword">New Password</label>
+        <input type="password" id="resetCodeNewPassword" placeholder="Min 6 characters" />
+      </div>
+      <div class="field" style="margin-bottom:16px;">
+        <label for="resetCodeConfirmPassword">Confirm Password</label>
+        <input type="password" id="resetCodeConfirmPassword" placeholder="Repeat new password" />
+      </div>
+      <div id="resetCodeError" class="form-error hidden"></div>
+      <button class="btn-primary btn-full" id="submitResetCodeBtn">Set Password &amp; Sign In →</button>
+      <button class="btn-link" id="cancelResetCodeBtn" style="margin-top:10px;">← Back to sign in</button>
     </div>
-    <div id="coachLoginError" class="form-error hidden"></div>
-    <button class="btn-primary btn-full" id="coachLoginBtn">Sign In →</button>
-    <p class="hint-text">Forgot your password? Contact your HSO to reset it.</p>
-    <button class="btn-link" id="backFromCoachSelect">← Back</button>
+
+    <button class="btn-link" id="backFromCoachSelect" style="margin-top:8px;">← Back</button>
   </div>
 </div>
 
@@ -635,6 +665,20 @@
     <button class="greeting-cta" onclick="dismissGreeting()">Got it →</button>
     <div class="greeting-progress-track">
       <div class="greeting-progress" id="greetingProgress"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RESET CODE MODAL (HSO) ═══════════════════════════════════════════════ -->
+<div id="resetCodeModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal-card" style="text-align:center;">
+    <div style="font-size:2rem;margin-bottom:8px;">🔑</div>
+    <h3 class="modal-title">Password Reset Triggered</h3>
+    <p class="modal-body">Share this one-time code with <strong id="resetCodeCoachName"></strong>.<br>It expires once used.</p>
+    <div class="reset-code-display" id="resetCodeValue"></div>
+    <p style="font-size:0.78rem;color:#6b7280;margin:12px 0 0;">Tell the coach to go to the app → <strong>Have a reset code?</strong> → enter this code and set their new password.</p>
+    <div class="modal-actions" style="margin-top:20px;">
+      <button class="btn-primary" onclick="document.getElementById('resetCodeModal').classList.add('hidden')">Done</button>
     </div>
   </div>
 </div>

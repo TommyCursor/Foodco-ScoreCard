@@ -709,20 +709,22 @@ function toggleTargetEditor(coachId) {
 
 async function triggerCoachPasswordReset(coachId, coachName) {
   const coach = _cache.coaches.find(c => c.id === coachId);
-  if (!coach?.userId) {
-    showToast('No login account linked to this coach.');
-    return;
-  }
-
-  if (!confirm(`Send a password reset link to ${coachName}?\n\nThey will receive an email with a link to set their own new password.`)) return;
+  if (!coach?.userId) { showToast('No login account linked to this coach.'); return; }
+  if (!confirm(`Reset password for ${coachName}?\n\nTheir current password will be invalidated immediately and you'll receive a one-time code to share with them.`)) return;
 
   try {
     const result = await dbAdminCall({ action: 'trigger_password_reset', userId: coach.userId });
     if (result.error) throw new Error(result.error.message);
-    showToast(`Reset link sent to ${coachName}.`);
+    showResetCodeModal(coachName, result.code);
   } catch (e) {
-    showToast(e.message || 'Failed to send reset link.');
+    showToast(e.message || 'Failed to reset password.');
   }
+}
+
+function showResetCodeModal(coachName, code) {
+  document.getElementById('resetCodeCoachName').textContent = coachName;
+  document.getElementById('resetCodeValue').textContent = code;
+  document.getElementById('resetCodeModal').classList.remove('hidden');
 }
 
 async function saveCoachTarget(coachId) {
@@ -2213,6 +2215,70 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   document.getElementById('coachPassword').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('coachLoginBtn').click();
+  });
+
+  // Reset code flow — toggle between normal login and reset code entry
+  document.getElementById('showResetCodeFormBtn').addEventListener('click', () => {
+    document.getElementById('coachNormalLogin').classList.toggle('hidden');
+    document.getElementById('coachResetCodeForm').classList.toggle('hidden');
+  });
+  document.getElementById('cancelResetCodeBtn').addEventListener('click', () => {
+    document.getElementById('coachNormalLogin').classList.remove('hidden');
+    document.getElementById('coachResetCodeForm').classList.add('hidden');
+  });
+
+  document.getElementById('submitResetCodeBtn').addEventListener('click', async () => {
+    const email      = document.getElementById('resetCodeEmail').value.trim();
+    const resetCode  = document.getElementById('resetCodeInput').value.trim().toUpperCase();
+    const newPass    = document.getElementById('resetCodeNewPassword').value;
+    const confirmPass= document.getElementById('resetCodeConfirmPassword').value;
+    const errEl      = document.getElementById('resetCodeError');
+    const btn        = document.getElementById('submitResetCodeBtn');
+
+    errEl.classList.add('hidden');
+    if (!email || !resetCode || !newPass) {
+      errEl.textContent = 'All fields are required.'; errEl.classList.remove('hidden'); return;
+    }
+    if (newPass.length < 6) {
+      errEl.textContent = 'Password must be at least 6 characters.'; errEl.classList.remove('hidden'); return;
+    }
+    if (newPass !== confirmPass) {
+      errEl.textContent = 'Passwords do not match.'; errEl.classList.remove('hidden'); return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Verifying…';
+
+    const res = await fetch('/api/admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'verify_and_set_password', email, resetCode, newPassword: newPass }),
+    });
+    const result = await res.json();
+    btn.disabled = false; btn.textContent = 'Set Password & Sign In →';
+
+    if (!res.ok || result.error) {
+      errEl.textContent = result.error || 'Verification failed.'; errEl.classList.remove('hidden'); return;
+    }
+
+    // Password updated — now sign them in automatically
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: newPass });
+    if (error || !data.user) {
+      errEl.textContent = 'Password set but sign-in failed. Please sign in normally.';
+      errEl.classList.remove('hidden');
+      document.getElementById('coachNormalLogin').classList.remove('hidden');
+      document.getElementById('coachResetCodeForm').classList.add('hidden');
+      return;
+    }
+
+    await loadAppState();
+    const coach = _cache.coaches.find(c => c.userId === data.user.id);
+    if (!coach) { await sb.auth.signOut(); return; }
+
+    currentCoach = coach;
+    isHSOMode = false; aiHistory = []; hasShownGreeting = false;
+    renderCoachHome();
+    navigate('coachHomeView');
+    setTimeout(() => showCoachGreeting(coach), 800);
   });
   document.getElementById('backFromCoachSelect').addEventListener('click', goBack);
 
