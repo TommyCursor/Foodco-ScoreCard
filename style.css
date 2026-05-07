@@ -3972,6 +3972,32 @@ tfoot .score-cell {
 .ai-send-btn:active   { transform: translateY(0); }
 .ai-send-btn:disabled { background: var(--s-300); cursor: not-allowed; transform: none; }
 
+/* ══ MODAL ═══════════════════════════════════════════════════════════════════ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.modal-overlay.hidden { display: none; }
+.modal-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 24px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.modal-title { font-size: 1.1rem; font-weight: 700; color: #111; margin: 0 0 8px; }
+.modal-body  { font-size: 0.875rem; color: #6b7280; margin: 0 0 4px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+.modal-actions .btn-primary { flex: 1; }
+
 /* ══ COACH GREETING POPUP ════════════════════════════════════════════════════ */
 
 .greeting-overlay {

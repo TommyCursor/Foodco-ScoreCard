@@ -1887,6 +1887,78 @@ function showToast(msg) {
 
 document.addEventListener('DOMContentLoaded', async () => {
 
+  // Handle password recovery redirect (user clicked reset link in email)
+  sb.auth.onAuthStateChange(async (event) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      showView('setNewPasswordView');
+    }
+  });
+
+  // Set new password handler (after clicking email reset link)
+  document.getElementById('setNewPasswordBtn').addEventListener('click', async () => {
+    const newPass     = document.getElementById('newPasswordInput').value;
+    const confirmPass = document.getElementById('confirmPasswordInput').value;
+    const errEl       = document.getElementById('newPasswordError');
+    const btn         = document.getElementById('setNewPasswordBtn');
+
+    if (newPass.length < 6) {
+      errEl.textContent = 'Password must be at least 6 characters.';
+      errEl.classList.remove('hidden'); return;
+    }
+    if (newPass !== confirmPass) {
+      errEl.textContent = 'Passwords do not match.';
+      errEl.classList.remove('hidden'); return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Updating…';
+    const { error } = await sb.auth.updateUser({ password: newPass });
+    btn.disabled = false; btn.textContent = 'Update Password →';
+
+    if (error) {
+      errEl.textContent = error.message;
+      errEl.classList.remove('hidden'); return;
+    }
+
+    await sb.auth.signOut();
+    showToast('Password updated. Please sign in with your new password.');
+    showView('landingView');
+  });
+
+  // Forgot password modal handlers
+  const forgotModal = document.getElementById('forgotPasswordModal');
+  function openForgotModal(prefillId) {
+    const prefill = document.getElementById(prefillId)?.value.trim() || '';
+    document.getElementById('resetEmail').value = prefill;
+    document.getElementById('resetMsg').classList.add('hidden');
+    forgotModal.classList.remove('hidden');
+  }
+  document.getElementById('forgotPasswordHso').addEventListener('click',   () => openForgotModal('hsoEmail'));
+  document.getElementById('forgotPasswordCoach').addEventListener('click', () => openForgotModal('coachEmail'));
+  document.getElementById('cancelResetBtn').addEventListener('click', () => forgotModal.classList.add('hidden'));
+  forgotModal.addEventListener('click', e => { if (e.target === forgotModal) forgotModal.classList.add('hidden'); });
+
+  document.getElementById('sendResetBtn').addEventListener('click', async () => {
+    const email = document.getElementById('resetEmail').value.trim();
+    const msgEl = document.getElementById('resetMsg');
+    const btn   = document.getElementById('sendResetBtn');
+
+    if (!email) { msgEl.textContent = 'Please enter your email.'; msgEl.classList.remove('hidden'); return; }
+
+    btn.disabled = true; btn.textContent = 'Sending…';
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: `${location.origin}`,
+    });
+    btn.disabled = false; btn.textContent = 'Send Reset Link';
+
+    if (error) {
+      msgEl.textContent = error.message;
+      msgEl.classList.remove('hidden'); return;
+    }
+
+    forgotModal.classList.add('hidden');
+    showToast('Reset link sent — check your email.');
+  });
+
   // Restore existing session on page load
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user) {

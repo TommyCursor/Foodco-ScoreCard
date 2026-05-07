@@ -132,6 +132,7 @@
       <div id="pinError" class="form-error hidden"></div>
       <button type="submit" class="btn-primary btn-full" id="hsoSignInBtn">Sign In →</button>
     </form>
+    <button class="btn-link" id="forgotPasswordHso" style="margin-top:8px;">Forgot password?</button>
     <button class="btn-link" id="backFromPin">← Back</button>
   </div>
 </div>
@@ -326,6 +327,7 @@
     </div>
     <div id="coachLoginError" class="form-error hidden"></div>
     <button class="btn-primary btn-full" id="coachLoginBtn">Sign In →</button>
+    <button class="btn-link" id="forgotPasswordCoach" style="margin-top:8px;">Forgot password?</button>
     <p class="hint-text">No account? Contact your HSO to get access.</p>
     <button class="btn-link" id="backFromCoachSelect">← Back</button>
   </div>
@@ -635,6 +637,42 @@
     <div class="greeting-progress-track">
       <div class="greeting-progress" id="greetingProgress"></div>
     </div>
+  </div>
+</div>
+
+<!-- ══ FORGOT PASSWORD MODAL ════════════════════════════════════════════════ -->
+<div id="forgotPasswordModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <h3 class="modal-title">Reset Password</h3>
+    <p class="modal-body">Enter your email address and we'll send you a reset link.</p>
+    <div class="field" style="margin:16px 0 8px;">
+      <label for="resetEmail">Email</label>
+      <input type="email" id="resetEmail" placeholder="your@email.com" />
+    </div>
+    <div id="resetMsg" class="form-error hidden"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="sendResetBtn">Send Reset Link</button>
+      <button class="btn-ghost" id="cancelResetBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SET NEW PASSWORD VIEW ════════════════════════════════════════════════ -->
+<div id="setNewPasswordView" class="view fill-center hidden">
+  <div class="center-card center-card--narrow">
+    <div class="pin-icon">🔑</div>
+    <h2 class="card-title">Set New Password</h2>
+    <p class="card-sub">Choose a strong password for your account.</p>
+    <div class="field" style="margin:20px 0 12px;">
+      <label for="newPasswordInput">New Password</label>
+      <input type="password" id="newPasswordInput" placeholder="Min 6 characters" minlength="6" />
+    </div>
+    <div class="field" style="margin-bottom:16px;">
+      <label for="confirmPasswordInput">Confirm Password</label>
+      <input type="password" id="confirmPasswordInput" placeholder="Repeat new password" />
+    </div>
+    <div id="newPasswordError" class="form-error hidden"></div>
+    <button class="btn-primary btn-full" id="setNewPasswordBtn">Update Password →</button>
   </div>
 </div>
 
