@@ -4340,6 +4340,85 @@ tfoot .score-cell {
 .er-date-row th { font-size: 0.65rem; padding-top: 2px; padding-bottom: 4px; }
 .er-muted { color: var(--text-muted); }
 
+/* ── Dev Mode ────────────────────────────────────────────────────────────── */
+.dev-modal-card {
+  border-top: 4px solid #d97706;
+  max-width: 340px;
+}
+.dev-signin-btn {
+  background: #d97706 !important;
+}
+.dev-signin-btn:hover {
+  background: #b45309 !important;
+}
+
+.dev-toolbar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1c1917;
+  border: 1.5px solid #d97706;
+  border-radius: 40px;
+  padding: 8px 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.4);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.dev-toolbar.hidden { display: none; }
+.dev-toolbar-badge {
+  font-weight: 700;
+  color: #fbbf24;
+  font-size: 0.75rem;
+  letter-spacing: .04em;
+}
+.dev-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: #44403c;
+}
+.dev-toolbar-label {
+  color: #a8a29e;
+  font-size: 0.75rem;
+}
+.dev-coach-select {
+  background: #292524;
+  color: #e7e5e4;
+  border: 1px solid #44403c;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  max-width: 180px;
+}
+.dev-switch-btn {
+  background: #d97706;
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.dev-switch-btn:hover { background: #b45309; }
+.dev-exit-btn {
+  background: transparent;
+  color: #78716c;
+  border: 1px solid #44403c;
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.dev-exit-btn:hover { color: #ef4444; border-color: #ef4444; }
+
 /* Print overrides for exec report */
 @media print {
   .exec-report { font-size: 10pt; }

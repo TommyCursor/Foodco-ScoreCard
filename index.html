@@ -887,6 +887,40 @@
   <img src="/ai-avatar.png" alt="AI Assistant" class="ai-fab-avatar" />
 </button>
 
+<!-- ══ DEV LOGIN MODAL (hidden — Ctrl+Shift+D to open) ═════════════════════ -->
+<div id="devLoginModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal-card dev-modal-card">
+    <div style="font-size:1.6rem;margin-bottom:4px;">🛠</div>
+    <h3 class="modal-title" style="color:#d97706;">Developer Access</h3>
+    <p class="modal-body" style="font-size:0.8rem;color:#6b7280;margin-bottom:16px;">Internal testing only. Not visible to end users.</p>
+    <div class="field" style="margin-bottom:10px;">
+      <label for="devEmail">Dev Email</label>
+      <input type="email" id="devEmail" placeholder="dev@foodco.ng" autocomplete="username" />
+    </div>
+    <div class="field" style="margin-bottom:14px;">
+      <label for="devPassword">Password</label>
+      <input type="password" id="devPassword" placeholder="Password" autocomplete="current-password" />
+    </div>
+    <div id="devLoginError" class="form-error hidden"></div>
+    <div class="modal-actions">
+      <button class="btn-primary dev-signin-btn" id="devSignInBtn">Enter Dev Mode →</button>
+      <button class="btn-ghost" id="devModalCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DEV TOOLBAR (shown only in dev mode) ════════════════════════════════ -->
+<div id="devToolbar" class="dev-toolbar hidden">
+  <span class="dev-toolbar-badge">🛠 DEV</span>
+  <span class="dev-toolbar-sep"></span>
+  <span class="dev-toolbar-label">View as:</span>
+  <select id="devCoachSelect" class="dev-coach-select">
+    <option value="">— HSO Admin —</option>
+  </select>
+  <button id="devSwitchViewBtn" class="dev-switch-btn">Switch →</button>
+  <button id="devExitBtn" class="dev-exit-btn">Exit Dev</button>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sheets.js"></script>
 <script src="app.js"></script>

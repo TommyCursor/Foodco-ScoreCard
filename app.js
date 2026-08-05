@@ -349,6 +349,7 @@ async function dbSaveSetting(key, value) {
 
 let currentCoach = null;
 let isHSOMode = false;
+let isDevMode = false;
 let hasShownGreeting = false;
 let resultsBackDest = 'coachHomeView';
 let currentResultScorecard = null;
@@ -379,6 +380,54 @@ function showView(viewId) {
   void el.offsetWidth; // reflow — restarts CSS animation on every navigation
   el.classList.add('view-active');
   window.scrollTo(0, 0);
+}
+
+// ── Dev Mode ───────────────────────────────────────────────────────────────
+
+function showDevToolbar() {
+  const toolbar = document.getElementById('devToolbar');
+  if (!toolbar) return;
+  toolbar.classList.remove('hidden');
+  populateDevCoachDropdown();
+}
+
+function hideDevToolbar() {
+  document.getElementById('devToolbar')?.classList.add('hidden');
+}
+
+function populateDevCoachDropdown() {
+  const sel = document.getElementById('devCoachSelect');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— HSO Admin —</option>';
+  (_cache.coaches || []).forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name + (c.branches ? ` (${c.branches})` : '');
+    sel.appendChild(opt);
+  });
+}
+
+function devSwitchView() {
+  const sel = document.getElementById('devCoachSelect');
+  const coachId = sel?.value;
+  if (!coachId) {
+    // Switch to HSO admin view
+    currentCoach = null;
+    isHSOMode = true;
+    renderAdminCoachList();
+    showView('adminView');
+    return;
+  }
+  const coach = (_cache.coaches || []).find(c => c.id === coachId);
+  if (!coach) return;
+  currentCoach = coach;
+  isHSOMode = false;
+  aiHistory = [];
+  hasShownGreeting = false;
+  renderCoachHome();
+  showView('coachHomeView');
+  document.getElementById('headerActions').innerHTML =
+    `<span class="header-role-badge" style="background:#fef3c7;color:#92400e;">🛠 Dev · ${esc(coach.name)}</span>`;
 }
 
 // ── Rating ─────────────────────────────────────────────────────────────────
@@ -2153,7 +2202,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else if (session?.user) {
     const role = session.user.user_metadata?.role;
     await loadAppState();
-    if (role === 'hso') {
+    if (role === 'dev') {
+      isHSOMode = true;
+      isDevMode = true;
+      renderAdminCoachList();
+      document.getElementById('googleClientIdInput').value = _cache.googleClientId;
+      document.getElementById('headerActions').innerHTML =
+        `<span class="header-role-badge" style="background:#fef3c7;color:#92400e;border:1px solid #d97706;">🛠 Dev Mode</span>`;
+      showDevToolbar();
+      showView('adminView');
+    } else if (role === 'hso') {
       isHSOMode = true;
       renderAdminCoachList();
       document.getElementById('googleClientIdInput').value = _cache.googleClientId;
@@ -2211,6 +2269,78 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => showHSOGreeting(), 800);
   });
   document.getElementById('backFromPin').addEventListener('click', goBack);
+
+  // ── Dev backdoor ─────────────────────────────────────────────────────────
+  // Trigger: Ctrl+Shift+D anywhere on the page
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      e.preventDefault();
+      document.getElementById('devLoginModal').classList.remove('hidden');
+      document.getElementById('devEmail').focus();
+    }
+  });
+
+  document.getElementById('devModalCancelBtn').addEventListener('click', () => {
+    document.getElementById('devLoginModal').classList.add('hidden');
+    document.getElementById('devLoginError').classList.add('hidden');
+    document.getElementById('devPassword').value = '';
+  });
+
+  document.getElementById('devSignInBtn').addEventListener('click', async () => {
+    const email    = document.getElementById('devEmail').value.trim();
+    const password = document.getElementById('devPassword').value;
+    const errEl    = document.getElementById('devLoginError');
+    const btn      = document.getElementById('devSignInBtn');
+
+    errEl.classList.add('hidden');
+    btn.disabled = true; btn.textContent = 'Entering…';
+
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    btn.disabled = false; btn.textContent = 'Enter Dev Mode →';
+
+    if (error || !data.user) {
+      errEl.textContent = 'Incorrect credentials.';
+      errEl.classList.remove('hidden'); return;
+    }
+    if (data.user.user_metadata?.role !== 'dev') {
+      errEl.textContent = 'This account does not have dev access.';
+      errEl.classList.remove('hidden');
+      await sb.auth.signOut(); return;
+    }
+
+    document.getElementById('devPassword').value = '';
+    document.getElementById('devLoginModal').classList.add('hidden');
+
+    await loadAppState();
+    isHSOMode = true;
+    isDevMode = true;
+    aiHistory = [];
+    hasShownGreeting = false;
+    renderAdminCoachList();
+    document.getElementById('googleClientIdInput').value = _cache.googleClientId;
+    document.getElementById('headerActions').innerHTML =
+      `<span class="header-role-badge" style="background:#fef3c7;color:#92400e;border:1px solid #d97706;">🛠 Dev Mode</span>`;
+    showDevToolbar();
+    navigate('adminView');
+  });
+
+  document.getElementById('devSwitchViewBtn').addEventListener('click', devSwitchView);
+
+  document.getElementById('devExitBtn').addEventListener('click', async () => {
+    isDevMode = false;
+    isHSOMode = false;
+    currentCoach = null;
+    hideDevToolbar();
+    await sb.auth.signOut();
+    showView('landingView');
+    document.getElementById('headerActions').innerHTML = '';
+  });
+
+  document.getElementById('devCoachSelect').addEventListener('change', () => {
+    const sel = document.getElementById('devCoachSelect');
+    document.getElementById('devSwitchViewBtn').textContent =
+      sel.value ? `View as ${(_cache.coaches||[]).find(c=>c.id===sel.value)?.name||'Coach'} →` : 'HSO View →';
+  });
 
   // Admin tabs
   document.querySelectorAll('.admin-nav-item').forEach(t =>
