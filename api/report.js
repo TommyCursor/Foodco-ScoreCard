@@ -62,7 +62,8 @@ export default async function handler(req) {
     headers: { 'Authorization': `Bearer ${token}`, 'apikey': anonKey },
   });
   const caller = await verifyRes.json();
-  if (!verifyRes.ok || caller?.user_metadata?.role !== 'hso') {
+  const role = caller?.user_metadata?.role;
+  if (!verifyRes.ok || (role !== 'hso' && role !== 'dev')) {
     return new Response('Forbidden', { status: 403 });
   }
 
