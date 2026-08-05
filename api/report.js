@@ -90,11 +90,11 @@ export default async function handler(req) {
       'OUTLETS PERFORMANCE!A2:F35',
       'AREA & REGION!A2:F8',
       'AREA & REGION!A10:F65',
-      'TOP REVENUE STORES!A2:O22',
+      'TOP REVENUE STORES!A1:R22',
       'CATEGORY SALES!B1:H14',
       'CATEGORY SALES!B17:F32',
       'WEEKLY SALES!B3:G19',
-      'YOY!A1:I25',
+      'YOY!A1:I60',
       'UTILITY & POWER COST!A2:J14',
     ];
 

@@ -3082,11 +3082,21 @@ function renderExecReport(data) {
     const n = parseFloat(String(v).replace(/[,\s₦NB]/g,'').replace(/%$/,''));
     return isNaN(n) ? null : n;
   }
+  // fmtBig: input already in millions (Revenue Overview, Growth table use this)
   function fmtBig(v) {
     const n = pN(v); if (n === null) return '—';
     if (Math.abs(n) >= 1000) return `N${(n/1000).toFixed(2)}B`;
     if (Math.abs(n) >= 1)    return `N${n.toFixed(1)}M`;
     return `N${n.toFixed(2)}M`;
+  }
+  // fmtRaw: input in raw Naira (Outlets, Region, Category, YOY, Area sheets)
+  function fmtRaw(v) {
+    const n = pN(v); if (n === null) return '—';
+    const abs = Math.abs(n), sign = n < 0 ? '-' : '';
+    if (abs >= 1e9) return `${sign}N${(abs/1e9).toFixed(2)}B`;
+    if (abs >= 1e6) return `${sign}N${(abs/1e6).toFixed(1)}M`;
+    if (abs >= 1e3) return `${sign}N${(abs/1e3).toFixed(0)}K`;
+    return `${sign}N${abs.toFixed(0)}`;
   }
   function fmtM(v, dp=1) {
     const n = pN(v); if (n === null) return v || '—';
@@ -3098,8 +3108,14 @@ function renderExecReport(data) {
     const s = String(v).includes('%') ? String(v) : `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
     return `<span style="color:${col};font-weight:700">${s}</span>`;
   }
+  // Normalize sheet percentages: spreadsheet stores some as decimal (0.88=88%) some as pct (88.28)
+  function normPct(v) {
+    const n = pN(v);
+    if (n === null) return null;
+    return n < 2 ? n * 100 : n;
+  }
   function statusBadge(v) {
-    const n = pN(v); if (n === null) return '<span class="er-muted">—</span>';
+    const n = normPct(v); if (n === null) return '<span class="er-muted">—</span>';
     let cls, label;
     if (n >= 100)      { cls = 'er-status-great';      label = 'GREAT'; }
     else if (n >= 90)  { cls = 'er-status-stable';     label = 'STABLE'; }
@@ -3108,10 +3124,9 @@ function renderExecReport(data) {
     return `<span class="${cls}">${label}</span>`;
   }
   function pctSpan(v) {
-    const n = pN(v); if (n === null) return '<span class="er-muted">—</span>';
+    const n = normPct(v); if (n === null) return '<span class="er-muted">—</span>';
     const col = n >= 90 ? '#15803d' : n >= 80 ? '#d97706' : '#dc2626';
-    const s = String(v).includes('%') ? String(v) : `${n.toFixed(1)}%`;
-    return `<span style="color:${col};font-weight:700">${s}</span>`;
+    return `<span style="color:${col};font-weight:700">${n.toFixed(1)}%</span>`;
   }
   function slideTitle(text) {
     return `<h2 class="er-slide-title">${text}</h2>`;
@@ -3252,11 +3267,12 @@ function renderExecReport(data) {
   </div>` : '';
 
   // ── OUTLETS tab ───────────────────────────────────────────────────────────
+  // Outlet sheet columns: A=OUTLET, B=TARGET, C=ACTUAL, D=TARGET(formula dup), E=DIFF, F=PCT(decimal for outlets, % for global)
   const allOutlets = (data.outletsPerf||[]).filter(r=>r?.[0]&&r[0]!=='OUTLET');
   const globalRow  = allOutlets.find(r=>/global/i.test(r[0]));
   const outletRows = allOutlets.filter(r=>!/global/i.test(r[0]));
-  const globalAch  = pN(globalRow?.[5]??globalRow?.[4]);
-  const topPerformers = outletRows.filter(r=>pN(r[5])>=95).slice(0,3);
+  const globalAch  = normPct(globalRow?.[5]??globalRow?.[4]);
+  const topPerformers = outletRows.filter(r=>normPct(r[5])>=95).slice(0,3);
 
   const outletSlide = outletRows.length ? `
   <div class="er-slide">
@@ -3265,27 +3281,26 @@ function renderExecReport(data) {
       ${globalRow ? `<div class="er-global-achievement">
         <div class="er-ga-label">GLOBAL ACHIEVEMENT</div>
         <div class="er-ga-pct" style="color:${globalAch>=90?'#15803d':globalAch>=80?'#d97706':'#dc2626'}">${globalAch?.toFixed(1)}%</div>
-        <div class="er-ga-sub">Target: ${fmtBig(globalRow[1])} | Actual: ${fmtBig(globalRow[2])}</div>
+        <div class="er-ga-sub">Target: ${fmtRaw(globalRow[1])} | Actual: ${fmtRaw(globalRow[2])}</div>
       </div>` : ''}
       ${topPerformers.length ? `<div class="er-top-performers">
         <div class="er-subsection-label">TOP PERFORMERS</div>
         <div class="er-top-perf-row">
-          ${topPerformers.map(r=>`<div class="er-top-perf-chip">${esc(r[0])} <strong>${r[5]}</strong></div>`).join('')}
+          ${topPerformers.map(r=>`<div class="er-top-perf-chip">${esc(r[0])} <strong>${normPct(r[5])?.toFixed(1)}%</strong></div>`).join('')}
         </div>
       </div>` : ''}
     </div>
     <div class="er-table-wrap"><table class="er-table">
-      <thead><tr><th>OUTLET</th><th class="er-num">TARGET</th><th class="er-num">ACTUAL</th><th class="er-num">DIFFERENCE</th><th class="er-num">ACH %</th><th>STATUS</th><th class="er-num">YTD SALES</th></tr></thead>
+      <thead><tr><th>OUTLET</th><th class="er-num">TARGET</th><th class="er-num">ACTUAL</th><th class="er-num">DIFFERENCE</th><th class="er-num">ACH %</th><th>STATUS</th></tr></thead>
       <tbody>
         ${[...(globalRow?[globalRow]:[]), ...outletRows].map(r=>{
-          const diff=pN(r[3]??r[4]); const isGlobal=/global/i.test(r[0]);
+          const diff=pN(r[4]); const isGlobal=/global/i.test(r[0]);
           return `<tr class="${isGlobal?'er-tot':''}">
             <td style="font-weight:${isGlobal?700:400}">${esc(r[0])}</td>
-            <td class="er-num">${fmtBig(r[1])}</td><td class="er-num">${fmtBig(r[2])}</td>
-            <td class="er-num" style="color:${diff!==null?(diff>=0?'#15803d':'#dc2626'):''}">${fmtBig(r[3]??r[4])}</td>
+            <td class="er-num">${fmtRaw(r[1])}</td><td class="er-num">${fmtRaw(r[2])}</td>
+            <td class="er-num" style="color:${diff!==null?(diff>=0?'#15803d':'#dc2626'):''}">${fmtRaw(r[4])}</td>
             <td class="er-num">${pctSpan(r[5])}</td>
             <td>${statusBadge(r[5])}</td>
-            <td class="er-num">${fmtBig(r[6]??r[5])}</td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -3293,61 +3308,95 @@ function renderExecReport(data) {
   </div>` : '';
 
   // Regional
+  // Region sheet columns: A=REGION_NAME, B=REGION_NAME(dup), C=ACTUAL_SALES, D=TARGET, E=DIFF, F=PCT_DECIMAL(0.76=76%)
   const regions = (data.regionPerf||[]).filter(r=>r?.[0]&&!/region|june|performance/i.test(r[0]));
-  const regionYTD = (data.regionPerf||[]).filter(r=>r?.[0]&&!/region|june|performance/i.test(r[0]));
   const regionSlide = regions.length ? `
   <div class="er-slide">
     ${slideTitle('Regional Performance')}
     <div class="er-region-cards">
       ${regions.map(r=>{
-        const pv=pN(r[5]??r[4]); const col=pv>=90?'#15803d':pv>=80?'#d97706':'#dc2626';
+        const pv=normPct(r[5]??r[4]); const col=pv>=90?'#15803d':pv>=80?'#d97706':'#dc2626';
         const bg=pv>=90?'#f0fdf4':pv>=80?'#fff7ed':'#fff1f2';
         return `<div class="er-region-card" style="border-left:4px solid ${col};background:${bg}">
           <div class="er-rc-name" style="color:${col}">${esc(r[0])}</div>
           <div class="er-rc-pct" style="color:${col}">${pv?.toFixed(0)}%</div>
-          <div class="er-rc-detail">Target: ${fmtBig(r[1]??r[2])}</div>
-          <div class="er-rc-detail">Actual: ${fmtBig(r[2]??r[3])}</div>
-          <div class="er-rc-detail" style="color:#dc2626">Shortfall: ${fmtBig(r[3]??r[4])}</div>
+          <div class="er-rc-detail">Target: ${fmtRaw(r[3])}</div>
+          <div class="er-rc-detail">Actual: ${fmtRaw(r[2])}</div>
+          <div class="er-rc-detail" style="color:#dc2626">Shortfall: ${fmtRaw(r[4])}</div>
         </div>`;
       }).join('')}
     </div>
   </div>` : '';
 
-  // Area Leaders
+  // Area Leaders — columns: A=LEADER, B=OUTLET, C=TARGET, D=ACTUAL, E=DIFF, F=ACH%(already in % format e.g. 88.28)
+  // Sub-outlet rows have blank A; TOTAL rows have r[1]='TOTAL'. Track current leader for grouping.
   const areaRaw = data.areaPerf || [];
-  const areaHdr = areaRaw.find(r=>/leader|area/i.test(r[0]));
-  const areaRows2 = areaRaw.filter(r=>r?.[0]&&!/leader|area|outlet|performance/i.test(r[0])&&r.length>=4);
-  const areaSlide = areaRows2.length ? `
+  let _areaLeader = '';
+  const areaGrouped = [];
+  for (const r of areaRaw) {
+    if (!r?.[0] && !r?.[1]) continue;
+    if (/^(area leader|leader|outlet|june 2026|performance)$/i.test((r[0]||'').trim())) continue;
+    if (r[0]) _areaLeader = r[0];
+    if (!r[1] || r.length < 4) continue;
+    areaGrouped.push({
+      leader: r[0] || '',
+      outlet: r[1],
+      target: r[2],
+      actual: r[3],
+      diff:   r[4],
+      pct:    r[5],
+      isTotal: /total/i.test(r[1]),
+    });
+  }
+  const areaSlide = areaGrouped.length ? `
   <div class="er-slide">
     ${slideTitle('Area Leaders Performance')}
     <div class="er-table-wrap"><table class="er-table">
-      <thead><tr><th>LEADER</th><th>OUTLETS</th><th class="er-num">TARGET</th><th class="er-num">ACTUAL</th><th class="er-num">ACH %</th><th>STATUS</th></tr></thead>
+      <thead><tr><th>LEADER</th><th>OUTLET</th><th class="er-num">TARGET</th><th class="er-num">ACTUAL</th><th class="er-num">DIFF</th><th class="er-num">ACH %</th><th>STATUS</th></tr></thead>
       <tbody>
-        ${areaRows2.map(r=>`<tr>
-          <td style="font-weight:600">${esc(r[0])}</td><td style="font-size:0.82rem;color:#4b5563">${esc(r[1]||'')}</td>
-          <td class="er-num">${fmtBig(r[2])}</td><td class="er-num">${fmtBig(r[3])}</td>
-          <td class="er-num">${pctSpan(r[4])}</td><td>${statusBadge(r[4])}</td>
-        </tr>`).join('')}
+        ${areaGrouped.map(({leader,outlet,target,actual,diff,pct,isTotal})=>{
+          const diffN=pN(diff);
+          return `<tr class="${isTotal?'er-tot':''}">
+            <td style="font-weight:${leader?700:400};color:${leader?'#166534':'inherit'}">${esc(leader)}</td>
+            <td>${esc(outlet)}</td>
+            <td class="er-num">${fmtRaw(target)}</td>
+            <td class="er-num">${fmtRaw(actual)}</td>
+            <td class="er-num" style="color:${diffN!==null?(diffN>=0?'#15803d':'#dc2626'):''}">${fmtRaw(diff)}</td>
+            <td class="er-num">${pctSpan(pct)}</td>
+            <td>${statusBadge(pct)}</td>
+          </tr>`;
+        }).join('')}
       </tbody>
     </table></div>
   </div>` : '';
 
-  // Top Stores
+  // Top Stores — sheet layout: each month has 3 cols (Outlet, Revenue_M, ADS).
+  // Row 0 = month headers (January, February…), Row 1 = col labels (Outlet, Revenue, ADS…), Rows 2-6 = top 5 stores, Row 7 = Top 5 total
   const ts = data.topStores || [];
-  const tsHdr = ts.find(r=>r?.some(c=>/rank|store|#/i.test(String(c))));
-  const tsCols = tsHdr ? tsHdr.filter(Boolean) : [];
-  const tsRows = ts.filter(r=>r?.[0]&&!/rank|store|top/i.test(r[0])&&r.length>=3);
-  const topStoresSlide = tsRows.length ? `
+  const tsMonthHdr = ts[0] || [];
+  const tsColHdr   = ts[1] || [];
+  // Extract months present (every 3rd col starting at 0 has the month name)
+  const tsMonths = tsMonthHdr.reduce((acc,v,i) => { if(v && String(v).trim()) acc.push({label:String(v).trim(), colIdx:i}); return acc;}, []);
+  const tsDataRows = ts.slice(2).filter(r=>r?.[0]&&r.length>=2);
+  const topStoresSlide = tsDataRows.length && tsMonths.length ? `
   <div class="er-slide">
-    ${slideTitle('Top Revenue Stores')}
-    <div class="er-table-wrap"><table class="er-table">
-      <thead><tr>${tsCols.length ? tsCols.map(c=>`<th>${esc(c)}</th>`).join('') : '<th>Rank</th><th>Store</th><th class="er-num">Sales</th>'}</tr></thead>
+    ${slideTitle('Top Revenue Stores — Monthly Rankings')}
+    <div class="er-table-wrap" style="overflow-x:auto"><table class="er-table">
+      <thead>
+        <tr><th>Rank</th>${tsMonths.map(m=>`<th class="er-num" colspan="2">${esc(m.label)}</th>`).join('')}</tr>
+        <tr><th></th>${tsMonths.map(()=>'<th class="er-num">Revenue (M)</th><th class="er-num">ADS</th>').join('')}</tr>
+      </thead>
       <tbody>
-        ${tsRows.map(r=>`<tr class="${/total/i.test(String(r[0]))?'er-tot':''}">
-          ${r.map((c,i)=>`<td class="${i>0?'er-num':''}">${c||'—'}</td>`).join('')}
+        ${tsDataRows.map((r,ri)=>`<tr class="${/top.5|total/i.test(String(r[0]))?'er-tot':''}">
+          <td style="font-weight:600">${/top.5|total/i.test(String(r[0]))?'TOP 5':ri+1}</td>
+          ${tsMonths.map(m=>`
+            <td class="er-num">${r[m.colIdx+1]||'—'}</td>
+            <td class="er-num" style="color:#6b7280;font-size:0.82rem">${r[m.colIdx+2]||'—'}</td>
+          `).join('')}
         </tr>`).join('')}
       </tbody>
     </table></div>
+    <p style="font-size:0.78rem;color:#6b7280;margin-top:8px">ADS = Average Daily Sales (Million)</p>
   </div>` : '';
 
   // ── CATEGORY tab ──────────────────────────────────────────────────────────
@@ -3365,14 +3414,14 @@ function renderExecReport(data) {
         <thead><tr><th>DEPARTMENT</th>${catYTDCols.map(c=>`<th class="er-num">${esc(c)}</th>`).join('')}</tr></thead>
         <tbody>
           ${catYTDRows.map(r=>`<tr class="${/total/i.test(r[0])?'er-tot':''}">
-            <td>${esc(r[0])}</td>${catYTDCols.map((_,i)=>`<td class="er-num">${r[i+1]||'—'}</td>`).join('')}
+            <td>${esc(r[0])}</td>${catYTDCols.map((_,i)=>`<td class="er-num">${fmtRaw(r[i+1])}</td>`).join('')}
           </tr>`).join('')}
         </tbody>
       </table></div>
       <div>
         <div class="er-kpi-mini-grid">
           ${catYTDRows.filter(r=>!/total/i.test(r[0])).slice(0,4).map(r=>
-            kpiCard(esc(r[0]), fmtBig(r[r.length-1]), 'YTD', '#15803d', '#f0fdf4')
+            kpiCard(esc(r[0]), fmtRaw(r[r.length-1]), 'YTD', '#15803d', '#f0fdf4')
           ).join('')}
         </div>
       </div>
@@ -3395,9 +3444,9 @@ function renderExecReport(data) {
           <tbody>
             ${catLatRows.map(r=>`<tr class="${/total|global/i.test(r[0])?'er-tot':''}">
               <td>${esc(r[0])}</td>${catLatCols.map((_,i)=>{
-                const v=r[i+1]; const n=pN(v);
+                const v=r[i+1];
                 const isAch = catLatCols[i]?.includes('%');
-                return `<td class="er-num">${isAch ? pctSpan(v) : (v||'—')}</td>`;
+                return `<td class="er-num">${isAch ? pctSpan(v) : fmtRaw(v)}</td>`;
               }).join('')}
             </tr>`).join('')}
           </tbody>
@@ -3408,25 +3457,37 @@ function renderExecReport(data) {
   </div>` : '';
 
   // ── COMPARISON tab ────────────────────────────────────────────────────────
+  // YOY sheet: SUPERMARKET section first, then RESTAURANT, then SM+3F TOTAL.
+  // Columns: OUTLET | 2025 QTY | 2025 VAL | 2026 QTY | 2026 VAL | QTY DIFF | VAL DIFF | %QTY DIFF | %VAL DIFF
   const yoy = data.yoy || [];
-  const yoyHdr = yoy.find(r=>r?.some(c=>/outlet|store/i.test(String(c))));
-  const yoyCols = yoyHdr ? yoyHdr.filter(Boolean) : [];
-  const yoyRows = yoy.filter(r=>r?.[0]&&!/outlet|store|header/i.test(r[0])&&r.length>=4);
-  const yoyGrowers = yoyRows.filter(r=>pN(r[r.length-1])>=0).sort((a,b)=>(pN(b[b.length-1])||0)-(pN(a[a.length-1])||0));
-  const yoyDecliners = yoyRows.filter(r=>pN(r[r.length-1])<0).sort((a,b)=>(pN(a[a.length-1])||0)-(pN(b[b.length-1])||0));
-
+  // Find the SM+3F TOTAL section header, fall back to first section
+  const smTotalIdx = yoy.findIndex(r=>r?.some(c=>/sm.*3f|sm\+3f/i.test(String(c))));
+  const yoySection = smTotalIdx >= 0 ? yoy.slice(smTotalIdx) : yoy;
+  const yoyHdr = yoySection.find(r=>r?.some(c=>/outlet|store/i.test(String(c))));
+  const yoyRows = yoySection.filter(r => {
+    if (!r?.[0]) return false;
+    if (/outlet|store|total|same.store|supermarket|restaurant|sm\+3f/i.test(r[0])) return false;
+    return r.length >= 6;
+  });
+  // Last column is %VAL DIFF, second-to-last is %QTY DIFF
+  const yoyGrowers  = yoyRows.filter(r=>pN(r[r.length-1])>=0).sort((a,b)=>(pN(b[b.length-1])||0)-(pN(a[a.length-1])||0));
+  const yoyDecliners= yoyRows.filter(r=>pN(r[r.length-1])<0).sort((a,b)=>(pN(a[a.length-1])||0)-(pN(b[b.length-1])||0));
+  // Columns to display: OUTLET, 2025 VAL(idx2), 2026 VAL(idx4), VAL DIFF(idx6), %VAL DIFF(last)
   const yoySlide = yoyRows.length ? `
   <div class="er-slide">
-    ${slideTitle('Outlet Year-on-Year Comparison')}
+    ${slideTitle('Outlet Year-on-Year Comparison (SM + 3F)')}
     <div class="er-two-col">
       <div>
         <div class="er-subsection-label">TOP GROWERS (Value %)</div>
         <div class="er-table-wrap"><table class="er-table">
-          <thead><tr><th>OUTLET</th><th class="er-num">2025 QTY</th><th class="er-num">2026 QTY</th><th class="er-num">2025 VAL</th><th class="er-num">2026 VAL</th><th class="er-num">VAL %</th></tr></thead>
+          <thead><tr><th>OUTLET</th><th class="er-num">2025 VAL</th><th class="er-num">2026 VAL</th><th class="er-num">VAL DIFF</th><th class="er-num">% VAL</th></tr></thead>
           <tbody>
-            ${yoyGrowers.slice(0,6).map(r=>`<tr>
+            ${yoyGrowers.slice(0,8).map(r=>`<tr>
               <td>${esc(r[0])}</td>
-              ${r.slice(1,6).map((v,i)=>`<td class="er-num">${i===4?yoySpan(v):(v||'—')}</td>`).join('')}
+              <td class="er-num">${fmtRaw(r[2])}</td>
+              <td class="er-num">${fmtRaw(r[4])}</td>
+              <td class="er-num" style="color:#15803d">${fmtRaw(r[6])}</td>
+              <td class="er-num">${yoySpan(r[r.length-1])}</td>
             </tr>`).join('')}
           </tbody>
         </table></div>
@@ -3434,11 +3495,14 @@ function renderExecReport(data) {
       <div>
         <div class="er-subsection-label er-orange">DECLINERS (Value %)</div>
         <div class="er-table-wrap"><table class="er-table er-table--orange-hdr">
-          <thead><tr><th>OUTLET</th><th class="er-num">2025 QTY</th><th class="er-num">2026 QTY</th><th class="er-num">2025 VAL</th><th class="er-num">2026 VAL</th><th class="er-num">VAL %</th></tr></thead>
+          <thead><tr><th>OUTLET</th><th class="er-num">2025 VAL</th><th class="er-num">2026 VAL</th><th class="er-num">VAL DIFF</th><th class="er-num">% VAL</th></tr></thead>
           <tbody>
-            ${yoyDecliners.slice(0,6).map(r=>`<tr>
+            ${yoyDecliners.slice(0,8).map(r=>`<tr>
               <td>${esc(r[0])}</td>
-              ${r.slice(1,6).map((v,i)=>`<td class="er-num">${i===4?yoySpan(v):(v||'—')}</td>`).join('')}
+              <td class="er-num">${fmtRaw(r[2])}</td>
+              <td class="er-num">${fmtRaw(r[4])}</td>
+              <td class="er-num" style="color:#dc2626">${fmtRaw(r[6])}</td>
+              <td class="er-num">${yoySpan(r[r.length-1])}</td>
             </tr>`).join('')}
           </tbody>
         </table></div>
