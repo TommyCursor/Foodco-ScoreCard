@@ -3271,7 +3271,7 @@ window.downloadAsPptx = async function() {
 
       // 4. Logo — original displayed at ~3:1 ratio but intentionally stretched tall for presence
       //    Scaled from 17.78×10 original, then height boosted to match original visual weight
-      const lw=6.5, lh=1.38, lx=(W-6.5)/2, ly=1.75;
+      const lw=6.5, lh=2.3, lx=(W-6.5)/2, ly=1.4;
       // Thin green accent line above logo
       s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly-0.16,w:6.33,h:0.04,fill:{color:'4ade80'}});
       if (logoDataUrl) {
