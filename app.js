@@ -3263,26 +3263,28 @@ window.downloadAsPptx = async function() {
       const s = pptx.addSlide();
       s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:C.green}});
       s.addShape(pptx.ShapeType.rect,{x:0,y:H*0.63,w:W,h:H*0.37,fill:{color:'0F4C28'}});
-      // Logo — keep original white background by embedding raw PNG (no canvas processing needed for visibility)
-      const lw=3.2, lh=0.92;
+      // Logo — exact size from original: 4.17" × 1.39"
+      const lw=4.17, lh=1.39;
       if (logoDataUrl) {
-        // Tight white card: just 0.1" padding so it looks like the logo itself, no border
-        s.addShape(pptx.ShapeType.roundRect,{x:(W-lw)/2-0.12,y:0.42,w:lw+0.24,h:lh+0.2,fill:{color:C.white},line:{color:C.white,pt:0},rectRadius:0.06});
-        s.addImage({data:logoDataUrl, x:(W-lw)/2, y:0.52, w:lw, h:lh});
+        // Tight white card with minimal padding (logo has green text — needs white bg on green slide)
+        s.addShape(pptx.ShapeType.roundRect,{x:(W-lw)/2-0.15,y:0.35,w:lw+0.3,h:lh+0.22,fill:{color:C.white},line:{color:C.white,pt:0},rectRadius:0.07});
+        s.addImage({data:logoDataUrl, x:(W-lw)/2, y:0.46, w:lw, h:lh});
       }
-      // Thin green divider below logo (matching original)
-      s.addShape(pptx.ShapeType.rect,{x:3.5,y:1.72,w:6.33,h:0.04,fill:{color:'5fa86e'}});
-      // Title as ONE line: "JUNE 2026 SALES REPORT"
-      s.addText(`${fullMonth.toUpperCase()} 2026 SALES REPORT`,{x:0.3,y:1.85,w:W-0.6,h:1.1,fontSize:44,bold:true,color:C.white,align:'center'});
-      // "FOODCO NIGERIA" subtitle
-      s.addText('FOODCO NIGERIA',{x:0.5,y:2.92,w:W-1,h:0.5,fontSize:18,color:'AADDB0',align:'center',charSpacing:3});
+      // Thin green divider below logo
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:2.08,w:6.33,h:0.04,fill:{color:'5fa86e'}});
+      // Title: Liter 52 Bold
+      s.addText(`${fullMonth.toUpperCase()} 2026 SALES REPORT`,{x:0.3,y:2.18,w:W-0.6,h:1.1,fontSize:52,bold:true,color:C.white,align:'center',fontFace:'Liter'});
+      // Subtitle: Liter 24
+      s.addText('FOODCO NIGERIA',{x:0.5,y:3.22,w:W-1,h:0.55,fontSize:24,color:'AADDB0',align:'center',fontFace:'Liter'});
       // Thin divider below subtitle
-      s.addShape(pptx.ShapeType.rect,{x:3.5,y:3.55,w:6.33,h:0.04,fill:{color:'AADDB0'}});
-      // Presenter — "Presented by [bold]Ayodele Adio[/bold]"
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:3.88,w:6.33,h:0.04,fill:{color:'AADDB0'}});
+      // "Presented by Ayodele Adio" — Quattrocento Sans 20, Adio bold
       s.addText([{text:'Presented by ',options:{bold:false}},{text:'Ayodele Adio',options:{bold:true}}],
-        {x:0.5,y:3.75,w:W-1,h:0.42,fontSize:13,color:C.white,align:'center'});
-      s.addText('Head, Sales Operations',{x:0.5,y:4.2,w:W-1,h:0.38,fontSize:12,color:'AADDB0',align:'center'});
-      s.addText(presDate,{x:0.5,y:4.65,w:W-1,h:0.35,fontSize:11,color:'AADDB0',align:'center'});
+        {x:0.5,y:4.05,w:W-1,h:0.48,fontSize:20,color:C.white,align:'center',fontFace:'Quattrocento Sans'});
+      // "Head, Sales Operations" — Quattrocento Sans 20
+      s.addText('Head, Sales Operations',{x:0.5,y:4.57,w:W-1,h:0.48,fontSize:20,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
+      // Date — Quattrocento Sans 16
+      s.addText(presDate,{x:0.5,y:5.1,w:W-1,h:0.4,fontSize:16,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
     }
 
     // ── SLIDE 2: Executive Overview ───────────────────────────────────────────
