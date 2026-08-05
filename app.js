@@ -3307,22 +3307,43 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 2: Executive Overview ───────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addHeaderBar(s,'EXECUTIVE OVERVIEW',label);
+      // Tab header bar — full width green
+      s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:0.62,fill:{color:C.green}});
+      const tabs=['REVENUE','GROWTH','OUTLETS','CATEGORY','COMPARISON'];
+      const tabW=W/tabs.length;
+      tabs.forEach((t,i)=>s.addText(t,{x:i*tabW,y:0,w:tabW,h:0.62,fontSize:16,color:C.white,align:'center',valign:'middle',fontFace:'Liter',bold:false}));
+      // Orange accent line below header
+      s.addShape(pptx.ShapeType.rect,{x:0,y:0.62,w:W,h:0.06,fill:{color:C.orange}});
+
+      // Title — Liter 36 green
+      s.addText('EXECUTIVE OVERVIEW',{x:0.28,y:0.78,w:9,h:0.7,fontSize:36,bold:false,color:C.green,fontFace:'Liter',valign:'middle'});
+      // Orange underline below title
+      s.addShape(pptx.ShapeType.rect,{x:0.28,y:1.38,w:1.2,h:0.05,fill:{color:C.orange}});
+      // FoodCo logo small — top right
+      if (logoDataUrl) s.addImage({data:logoDataUrl,x:11.2,y:0.72,w:1.9,h:0.54});
+      // Page number
+      s.addText('02',{x:W-0.5,y:H-0.4,w:0.4,h:0.35,fontSize:12,color:C.gray,align:'right',fontFace:'Liter'});
+
+      // 4 quadrant cards
       const quads=[
-        {n:'01',name:'REVENUE',desc:'YTD Revenue Performance & Core Business Overview',col:C.green,bg:'F0FDF4'},
-        {n:'02',name:'GROWTH',desc:'Period Growth Analysis & Year-over-Year Comparisons',col:C.orange,bg:'FFF7ED'},
-        {n:'03',name:'OUTLETS',desc:'Outlet Performance, Regional & Area Analysis',col:C.green,bg:'F0FDF4'},
-        {n:'04',name:'CATEGORY',desc:'Category Sales YTD & Monthly Performance',col:C.orange,bg:'FFF7ED'},
+        {n:'01',name:'REVENUE',  desc:'YTD Revenue Performance, Core Business Overview, and Monthly Revenue Trends across all business lines',col:C.green, bg:'F0FDF4'},
+        {n:'02',name:'GROWTH',   desc:'Period Growth Analysis, Year-over-Year comparisons, and Same Store performance metrics',              col:C.orange,bg:'FFF7ED'},
+        {n:'03',name:'OUTLETS',  desc:'Outlet Performance, Regional Analysis, Area Leaders, and Top 5 Store Rankings',                       col:C.green, bg:'F0FDF4'},
+        {n:'04',name:'CATEGORY', desc:'Category Sales YTD, June Category Performance, Target Achievement, and Weekly Analysis',              col:C.orange,bg:'FFF7ED'},
       ];
-      const qw=6.3, qh=2.6, gap=0.12, startY=1.05;
+      const cw=6.34, ch=2.82, gap=0.15, mx=0.25, startY=1.52;
       quads.forEach((q,i)=>{
-        const col=i%2, row=Math.floor(i/2);
-        const x=0.2+col*(qw+gap), y=startY+row*(qh+gap);
-        s.addShape(pptx.ShapeType.rect,{x,y,w:qw,h:qh,fill:{color:q.bg}});
-        s.addShape(pptx.ShapeType.rect,{x,y,w:0.1,h:qh,fill:{color:q.col}});
-        s.addText(q.n,{x:x+0.25,y:y+0.1,w:2,h:0.7,fontSize:30,bold:true,color:q.col+'55'});
-        s.addText(q.name,{x:x+0.25,y:y+0.78,w:qw-0.4,h:0.55,fontSize:18,bold:true,color:q.col});
-        s.addText(q.desc,{x:x+0.25,y:y+1.38,w:qw-0.4,h:0.9,fontSize:11,color:C.dkgray,wrap:true});
+        const cx=mx+(i%2)*(cw+gap), cy=startY+Math.floor(i/2)*(ch+gap);
+        // Card background
+        s.addShape(pptx.ShapeType.rect,{x:cx,y:cy,w:cw,h:ch,fill:{color:q.bg},line:{color:q.bg,pt:0}});
+        // Left colour border
+        s.addShape(pptx.ShapeType.rect,{x:cx,y:cy,w:0.07,h:ch,fill:{color:q.col}});
+        // Number — Liter 48
+        s.addText(q.n,{x:cx+0.18,y:cy+0.1,w:cw-0.28,h:0.72,fontSize:48,color:q.col,fontFace:'Liter',bold:false});
+        // Topic name — Liter 24 bold
+        s.addText(q.name,{x:cx+0.18,y:cy+0.82,w:cw-0.28,h:0.42,fontSize:24,bold:true,color:q.col,fontFace:'Liter'});
+        // Description — Quattrocento Sans 18
+        s.addText(q.desc,{x:cx+0.18,y:cy+1.3,w:cw-0.28,h:1.4,fontSize:18,color:C.dkgray,fontFace:'Quattrocento Sans',wrap:true,valign:'top'});
       });
     }
 
