@@ -1,0 +1,24 @@
+{
+  "name": "Area Coach Performance Scorecard",
+  "short_name": "Foodco Scorecard",
+  "description": "Foodco Supermarket & 3F Operations area coach KPI tracker",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#15803d",
+  "icons": [
+    {
+      "src": "/foodco-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/foodco-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -45,25 +45,23 @@ const KPI_CONFIG = [
   {
     id: 'stock', pillar: 'Stock Discipline',
     label: '2. Stock Availability', pts: 25,
-    formula: 'Available SKUs ÷ Total Required SKUs × 100',
+    formula: 'Pre-calculated availability %',
     dataSource: 'Supermarket & 3F Operations inventory',
-    includes: ['Diamond Lines', 'Silver Lines', '3F Critical SKUs'],
     fields: [
-      { id: 'availSKU', label: 'Available SKUs',      placeholder: '0', step: '1' },
-      { id: 'totalSKU', label: 'Total Required SKUs', placeholder: '0', step: '1', min: 1 }
+      { id: 'stockPct', label: 'Stock Availability (%)', placeholder: '0.0', step: '0.1', min: 0, max: 100 }
     ],
-    compute: d => d.availSKU / d.totalSKU * 100,
-    score:   p => p >= 95 ? 25 : p >= 92 ? 23 : p >= 88 ? 20 : p >= 85 ? 15 : 5,
+    compute: d => d.stockPct,
+    score:   p => p >= 91 ? 25 : p >= 86 ? 20 : p >= 81 ? 15 : p >= 76 ? 10 : 5,
     display: v => `${v.toFixed(1)}%`,
     bands: [
-      { label: '95–100%', score: 25 },
-      { label: '92–94%',  score: 23 },
-      { label: '88–91%',  score: 20 },
-      { label: '85–87%',  score: 15 },
-      { label: '< 85%',   score:  5 }
+      { label: '≥ 91%',   score: 25 },
+      { label: '86–90%',  score: 20 },
+      { label: '81–85%',  score: 15 },
+      { label: '76–80%',  score: 10 },
+      { label: '< 76%',   score:  5 }
     ],
     validate: d => {
-      if (d.availSKU > d.totalSKU) return 'Available SKUs exceed total required — check values.';
+      if (d.stockPct < 0 || d.stockPct > 100) return 'Availability % must be between 0 and 100.';
       return null;
     }
   },
@@ -203,24 +201,22 @@ const KPI_CONFIG = [
   {
     id: 'nps', pillar: 'Customer Experience',
     label: '9. Net Promoter Score (NPS)', pts: 7.5,
-    formula: '% Promoters − % Detractors',
+    formula: 'Pre-calculated NPS %',
     fields: [
-      { id: 'promoters',  label: '% Promoters',  placeholder: '0–100', max: 100 },
-      { id: 'detractors', label: '% Detractors', placeholder: '0–100', max: 100 }
+      { id: 'npsPct', label: 'NPS Achieved (%)', placeholder: '0', step: '0.1' }
     ],
-    compute: d => d.promoters - d.detractors,
-    score:   n => n >= 70 ? 7.5 : n >= 60 ? 6 : n >= 50 ? 4 : n >= 40 ? 3 : 1,
-    display: v => `NPS ${v.toFixed(1)}`,
+    compute: d => d.npsPct,
+    score:   n => n >= 45 ? 7.5 : n >= 40 ? 6 : n >= 30 ? 4 : n >= 20 ? 3 : 1,
+    display: v => `${v.toFixed(1)}%`,
     bands: [
-      { label: 'NPS ≥ 70',    score: 7.5 },
-      { label: 'NPS 60–69',   score: 6   },
-      { label: 'NPS 50–59',   score: 4   },
-      { label: 'NPS 40–49',   score: 3   },
-      { label: 'NPS < 40',    score: 1   }
+      { label: '≥ 45%',   score: 7.5 },
+      { label: '40–44%',  score: 6   },
+      { label: '30–39%',  score: 4   },
+      { label: '20–29%',  score: 3   },
+      { label: '< 20%',   score: 1   }
     ],
     validate: d => {
-      if (d.promoters + d.detractors > 100) return 'Promoters + Detractors cannot exceed 100%.';
-      if (d.promoters < 0 || d.detractors < 0) return 'Values cannot be negative.';
+      if (d.npsPct < 0 || d.npsPct > 100) return 'NPS % must be between 0 and 100.';
       return null;
     }
   }
@@ -287,8 +283,8 @@ async function dbAddCoach(name, branches, email, password) {
   const { data, error } = await sb.from('coaches').insert({ user_id: userId, name, branches }).select().single();
   if (error) throw error;
 
-  // update user metadata with coach id
-  await dbAdminCall({ action: 'reset_password', userId, password, name, coachId: data.id });
+  // update user metadata with coachId
+  await dbAdminCall({ action: 'update_coach_metadata', userId, coachId: data.id });
 
   const coach = { id: data.id, name: data.name, branches: data.branches || '', salesTarget: null, userId };
   _cache.coaches.push(coach);
@@ -722,9 +718,13 @@ async function triggerCoachPasswordReset(coachId, coachName) {
 }
 
 function showResetCodeModal(coachName, code) {
-  document.getElementById('resetCodeCoachName').textContent = coachName;
-  document.getElementById('resetCodeValue').textContent = code;
-  document.getElementById('resetCodeModal').classList.remove('hidden');
+  const modal = document.getElementById('resetCodeModal');
+  if (!modal) return;
+  const nameEl = document.getElementById('resetCodeCoachName');
+  const codeEl = document.getElementById('resetCodeValue');
+  if (nameEl) nameEl.textContent = coachName;
+  if (codeEl) codeEl.textContent = code;
+  modal.classList.remove('hidden');
 }
 
 async function saveCoachTarget(coachId) {
@@ -796,9 +796,12 @@ function renderAllScorecards() {
 // ── Coach Home ─────────────────────────────────────────────────────────────
 
 function renderCoachHome() {
-  document.getElementById('coachWelcomeName').textContent = currentCoach.name;
+  const welcomeEl = document.getElementById('coachWelcomeName');
+  if (welcomeEl) welcomeEl.textContent = currentCoach.name;
   document.getElementById('headerActions').innerHTML =
-    `<span class="header-role-badge">${esc(currentCoach.name)}</span>`;
+    `<span class="header-role-badge">${esc(currentCoach.name)}</span>
+     <button id="pwaInstallBtn" class="btn-install hidden" title="Install app">⬇ Install App</button>`;
+  showInstallButton();
 
   // Submission status for current month
   const now         = new Date();
@@ -844,8 +847,7 @@ function renderCoachHome() {
   document.getElementById('dashLastScore').textContent  = parseFloat(last.total).toFixed(1);
   document.getElementById('dashLastPeriod').textContent = formatPeriod(last.period);
   const chipEl = document.getElementById('dashLastChip');
-  chipEl.textContent      = lastR.label;
-  chipEl.style.background = lastR.color;
+  if (chipEl) { chipEl.textContent = lastR.label; chipEl.style.background = lastR.color; }
 
   // Personal best
   const best = entries.reduce((a, b) => parseFloat(a.total) >= parseFloat(b.total) ? a : b);
@@ -1529,7 +1531,8 @@ function displayResults(s, fromNav = false) {
   document.getElementById('totalScoreFooter').textContent = t.toFixed(1);
 
   // Table rows
-  document.getElementById('scoreTable').querySelector('tbody').innerHTML = s.rows.map((row, i) => {
+  const scoreTableBody = document.getElementById('scoreTable')?.querySelector('tbody');
+  if (scoreTableBody) scoreTableBody.innerHTML = s.rows.map((row, i) => {
     const ratio = row.score / row.weight;
     const col   = ratio >= .95 ? '#166534' : ratio >= .75 ? '#15803d' : ratio >= .5 ? '#b45309' : '#c2410c';
     return `
@@ -1899,14 +1902,42 @@ function formatDate(iso) {
 
 function showToast(msg) {
   const t = document.getElementById('toast');
+  if (!t) return;
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2800);
 }
 
+// ── PWA install prompt ────────────────────────────────────────────────────
+let _installPrompt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _installPrompt = e;
+  document.getElementById('pwaInstallBtn')?.classList.remove('hidden');
+});
+
+window.addEventListener('appinstalled', () => {
+  _installPrompt = null;
+  document.getElementById('pwaInstallBtn')?.classList.add('hidden');
+});
+
+function showInstallButton() {
+  const btn = document.getElementById('pwaInstallBtn');
+  if (btn && _installPrompt) btn.classList.remove('hidden');
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
+
+  document.getElementById('headerActions').addEventListener('click', async e => {
+    if (!e.target.closest('#pwaInstallBtn')) return;
+    if (!_installPrompt) return;
+    _installPrompt.prompt();
+    const { outcome } = await _installPrompt.userChoice;
+    if (outcome === 'accepted') _installPrompt = null;
+  });
 
   // Handle password recovery redirect (user clicked reset link in email)
   sb.auth.onAuthStateChange(async (event) => {
@@ -1945,17 +1976,100 @@ document.addEventListener('DOMContentLoaded', async () => {
     showView('landingView');
   });
 
-  // Forgot password — HSO only
+  // Forgot password — HSO security-questions flow
   const forgotModal = document.getElementById('forgotPasswordModal');
+
   function openForgotModal(prefillId) {
     const prefill = document.getElementById(prefillId)?.value.trim() || '';
     document.getElementById('resetEmail').value = prefill;
     document.getElementById('resetMsg').classList.add('hidden');
+    document.getElementById('fpm-step1').classList.remove('hidden');
+    document.getElementById('fpm-step2').classList.add('hidden');
+    document.getElementById('fpmA1').value = '';
+    document.getElementById('fpmA2').value = '';
+    document.getElementById('fpmNewPass').value = '';
+    document.getElementById('fpmConfirmPass').value = '';
+    document.getElementById('fpmStep2Msg').classList.add('hidden');
     forgotModal.classList.remove('hidden');
   }
+
   document.getElementById('forgotPasswordHso').addEventListener('click', () => openForgotModal('hsoEmail'));
   document.getElementById('cancelResetBtn').addEventListener('click', () => forgotModal.classList.add('hidden'));
   forgotModal.addEventListener('click', e => { if (e.target === forgotModal) forgotModal.classList.add('hidden'); });
+
+  // Step 1: look up security questions by email
+  document.getElementById('fpmNextBtn').addEventListener('click', async () => {
+    const email = document.getElementById('resetEmail').value.trim();
+    const msgEl = document.getElementById('resetMsg');
+    const btn   = document.getElementById('fpmNextBtn');
+
+    if (!email) { msgEl.textContent = 'Please enter your email.'; msgEl.classList.remove('hidden'); return; }
+    msgEl.classList.add('hidden');
+
+    btn.disabled = true; btn.textContent = 'Checking…';
+    try {
+      const res  = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_security_questions', email }),
+      });
+      const data = await res.json();
+      if (!res.ok) { msgEl.textContent = data.error || 'Failed to fetch questions.'; msgEl.classList.remove('hidden'); return; }
+
+      const q1El = document.getElementById('fpmQ1Label');
+      const q2El = document.getElementById('fpmQ2Label');
+      if (q1El) q1El.textContent = data.sq1;
+      if (q2El) q2El.textContent = data.sq2;
+      document.getElementById('fpm-step1')?.classList.add('hidden');
+      document.getElementById('fpm-step2')?.classList.remove('hidden');
+    } catch {
+      msgEl.textContent = 'Network error — please try again.';
+      msgEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Next →';
+    }
+  });
+
+  // Step 2: back
+  document.getElementById('fpmBackBtn').addEventListener('click', () => {
+    document.getElementById('fpm-step2').classList.add('hidden');
+    document.getElementById('fpm-step1').classList.remove('hidden');
+  });
+
+  // Step 2: verify answers + reset password
+  document.getElementById('fpmResetBtn').addEventListener('click', async () => {
+    const email    = document.getElementById('resetEmail').value.trim();
+    const a1       = document.getElementById('fpmA1').value;
+    const a2       = document.getElementById('fpmA2').value;
+    const newPass  = document.getElementById('fpmNewPass').value;
+    const confPass = document.getElementById('fpmConfirmPass').value;
+    const msgEl    = document.getElementById('fpmStep2Msg');
+    const btn      = document.getElementById('fpmResetBtn');
+
+    if (!a1 || !a2) { msgEl.textContent = 'Please answer both security questions.'; msgEl.classList.remove('hidden'); return; }
+    if (newPass.length < 6) { msgEl.textContent = 'Password must be at least 6 characters.'; msgEl.classList.remove('hidden'); return; }
+    if (newPass !== confPass) { msgEl.textContent = 'Passwords do not match.'; msgEl.classList.remove('hidden'); return; }
+
+    btn.disabled = true; btn.textContent = 'Resetting…';
+    msgEl.classList.add('hidden');
+    try {
+      const res  = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify_and_reset_hso_password', email, a1, a2, newPassword: newPass }),
+      });
+      const data = await res.json();
+      if (!res.ok) { msgEl.textContent = data.error || 'Reset failed.'; msgEl.classList.remove('hidden'); return; }
+
+      forgotModal.classList.add('hidden');
+      showToast('Password reset! Sign in with your new password.');
+    } catch {
+      msgEl.textContent = 'Network error — please try again.';
+      msgEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Reset Password';
+    }
+  });
 
   // Force password change — shown after coach logs in with HSO-set password
   document.getElementById('forcePasswordBtn').addEventListener('click', async () => {
@@ -1991,31 +2105,52 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => showCoachGreeting(currentCoach), 800);
   });
 
-  document.getElementById('sendResetBtn').addEventListener('click', async () => {
-    const email = document.getElementById('resetEmail').value.trim();
-    const msgEl = document.getElementById('resetMsg');
-    const btn   = document.getElementById('sendResetBtn');
+  // Admin – security questions setup
+  document.getElementById('securityQForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const q1    = document.getElementById('sq1Select').value;
+    const a1    = document.getElementById('sq1Answer').value.trim();
+    const q2    = document.getElementById('sq2Select').value;
+    const a2    = document.getElementById('sq2Answer').value.trim();
+    const msgEl = document.getElementById('securityQMsg');
+    const btn   = document.getElementById('saveSecurityQBtn');
 
-    if (!email) { msgEl.textContent = 'Please enter your email.'; msgEl.classList.remove('hidden'); return; }
-
-    btn.disabled = true; btn.textContent = 'Sending…';
-    const { error } = await sb.auth.resetPasswordForEmail(email, {
-      redirectTo: `${location.origin}`,
-    });
-    btn.disabled = false; btn.textContent = 'Send Reset Link';
-
-    if (error) {
-      msgEl.textContent = error.message;
+    if (!q1 || !a1 || !q2 || !a2) {
+      msgEl.textContent = 'Please select both questions and provide answers.';
+      msgEl.classList.remove('hidden'); return;
+    }
+    if (q1 === q2) {
+      msgEl.textContent = 'Please choose two different questions.';
       msgEl.classList.remove('hidden'); return;
     }
 
-    forgotModal.classList.add('hidden');
-    showToast('Reset link sent — check your email.');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    msgEl.classList.add('hidden');
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res  = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: 'setup_security_questions', q1, a1, q2, a2 }),
+      });
+      const data = await res.json();
+      if (!res.ok) { msgEl.textContent = data.error || 'Failed to save.'; msgEl.classList.remove('hidden'); return; }
+      document.getElementById('securityQForm').reset();
+      showToast('Security questions saved.');
+    } catch {
+      msgEl.textContent = 'Network error — please try again.';
+      msgEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save Security Questions';
+    }
   });
 
-  // Restore existing session on page load
+  // Restore existing session on page load (skip if this is a password recovery redirect)
+  const isRecovery = window.location.hash.includes('type=recovery');
   const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) {
+  if (isRecovery) {
+    showView('setNewPasswordView');
+  } else if (session?.user) {
     const role = session.user.user_metadata?.role;
     await loadAppState();
     if (role === 'hso') {
@@ -2023,7 +2158,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderAdminCoachList();
       document.getElementById('googleClientIdInput').value = _cache.googleClientId;
       document.getElementById('headerActions').innerHTML =
-        `<span class="header-role-badge header-role-badge--admin">🔐 HSO Admin</span>`;
+        `<span class="header-role-badge header-role-badge--admin">🔐 HSO Admin</span>
+         <button id="pwaInstallBtn" class="btn-install hidden" title="Install app">⬇ Install App</button>`;
+      showInstallButton();
       showView('adminView');
     } else {
       const coach = _cache.coaches.find(c => c.userId === session.user.id);
@@ -2464,6 +2601,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     this.style.height = 'auto';
     this.style.height = Math.min(this.scrollHeight, 120) + 'px';
   });
+
+  // ── Executive Report ───────────────────────────────────────────────────────
+  document.getElementById('execReportGenerateBtn').addEventListener('click', async () => {
+    const btn     = document.getElementById('execReportGenerateBtn');
+    const spinner = document.getElementById('execReportSpinner');
+    const errEl   = document.getElementById('execReportError');
+    const out     = document.getElementById('execReportOutput');
+
+    btn.disabled = true;
+    spinner.classList.remove('hidden');
+    errEl.classList.add('hidden');
+    out.innerHTML = '';
+
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('/api/report', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        errEl.textContent = data.error || 'Failed to load report.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      out.innerHTML = renderExecReport(data);
+    } catch (e) {
+      errEl.textContent = e.message || 'Network error — please try again.';
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      spinner.classList.add('hidden');
+    }
+  });
 });
 
 // ── Coach Greeting Popup ──────────────────────────────────────────────────
@@ -2628,8 +2799,8 @@ function initAIPanel() {
   msgEl.innerHTML = '';
   aiHistory = [];
 
-  document.getElementById('aiSuggestions').classList.remove('hidden');
-  document.getElementById('aiInputRow').classList.remove('hidden');
+  document.getElementById('aiSuggestions')?.classList.remove('hidden');
+  document.getElementById('aiInputRow')?.classList.remove('hidden');
   updateAISuggestions();
 
   const store = loadStore();
@@ -2754,3 +2925,327 @@ function useAISuggestion(el) {
   const input = document.getElementById('aiQuestionInput');
   if (input) { input.value = el.textContent.trim(); submitAIQuestion(); }
 }
+
+// ── Executive Report Renderer ─────────────────────────────────────────────
+
+function renderExecReport(data) {
+  function pN(v) {
+    if (v == null || v === '') return null;
+    const n = parseFloat(String(v).replace(/[,\s₦]/g,'').replace(/%$/,''));
+    return isNaN(n) ? null : n;
+  }
+  function fmtBig(v) {
+    const n = pN(v); if (n === null) return '—';
+    if (Math.abs(n) >= 1e9) return `₦${(n/1e9).toFixed(2)}B`;
+    if (Math.abs(n) >= 1e6) return `₦${(n/1e6).toFixed(1)}M`;
+    return `₦${n.toLocaleString('en-NG',{maximumFractionDigits:0})}`;
+  }
+  function fmtM(v) {
+    const n = pN(v); if (n === null) return '—';
+    return n.toLocaleString('en-NG',{maximumFractionDigits:0});
+  }
+  function pctBadge(v, g=90, f=75) {
+    const n = pN(v); if (n === null) return '<span class="er-muted">—</span>';
+    const col = n >= g ? '#15803d' : n >= f ? '#b45309' : '#c2410c';
+    const disp = String(v).includes('%') ? String(v) : `${n.toFixed(1)}%`;
+    return `<span style="color:${col};font-weight:600">${disp}</span>`;
+  }
+  function yoyBadge(v) {
+    const n = pN(v); if (n === null) return '<span class="er-muted">—</span>';
+    const col = n >= 0 ? '#15803d' : '#c2410c';
+    return `<span style="color:${col};font-weight:600">${n >= 0 ? '+' : ''}${n.toFixed(1)}%</span>`;
+  }
+
+  // ── 1. Business YTD ──────────────────────────────────────────────────────
+  const ytdAll   = (data.businessYTD || []).filter(r => r?.[0]);
+  const months   = ytdAll.filter(r => r[0].toUpperCase() !== 'MONTH' && r[0].toUpperCase() !== 'YTD');
+  const ytdTotal = ytdAll.find(r => r[0]?.toUpperCase() === 'YTD');
+  const latestM  = months[months.length - 1];
+
+  const s1 = `
+  <div class="er-section">
+    <h2 class="er-section-title">📅 Business YTD Revenue</h2>
+    <div class="er-month-strip">
+      ${months.map(r => {
+        const v = pN(r[1]);
+        return `<div class="er-month-card">
+          <div class="er-mc-label">${esc(r[0])}</div>
+          <div class="er-mc-value">₦${v !== null ? v.toFixed(2) : '—'}B</div>
+        </div>`;
+      }).join('')}
+      ${ytdTotal ? `<div class="er-month-card er-month-card--total">
+        <div class="er-mc-label">YTD TOTAL</div>
+        <div class="er-mc-value">₦${pN(ytdTotal[1])?.toFixed(2) ?? '—'}B</div>
+      </div>` : ''}
+    </div>
+  </div>`;
+
+  // ── 2. Revenue Overview ──────────────────────────────────────────────────
+  const rov = data.revenueOverview || [];
+  const rovHdr = rov.find(r => r?.[1]?.includes('-') || r?.[1]?.includes('Jan') || r?.[1]?.includes('JAN'));
+  const rovMonths = rovHdr ? rovHdr.slice(1).filter(Boolean) : [];
+
+  let rovSections = [], curSecName = '', curSecRows = [];
+  for (const r of rov) {
+    if (!r?.[0]) continue;
+    if (r[0].includes('Revenue Overview') || r[0].includes('revenue')) continue;
+    if (r[0].includes('Core Business') || r[0].includes('Other Key') || r[0].includes('Other Businesses')) {
+      if (curSecRows.length) rovSections.push({ name: curSecName, rows: curSecRows });
+      curSecName = r[0]; curSecRows = [];
+    } else if (r.length >= 2) {
+      curSecRows.push(r);
+    }
+  }
+  if (curSecRows.length) rovSections.push({ name: curSecName, rows: curSecRows });
+
+  const s2 = rovMonths.length ? `
+  <div class="er-section">
+    <h2 class="er-section-title">💼 Revenue Overview — by Business Unit (₦ Million)</h2>
+    <div class="er-table-wrap">
+      <table class="er-table">
+        <thead><tr><th>Business Line</th>${rovMonths.map(m => `<th class="er-num">${esc(m)}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${rovSections.map(sec => `
+            <tr class="er-sec-row"><td colspan="${rovMonths.length+1}">${esc(sec.name)}</td></tr>
+            ${sec.rows.map(r => `<tr class="${r[0]==='Total'||r[0]==='TOTAL'?'er-tot':''}">
+              <td>${esc(r[0])}</td>
+              ${rovMonths.map((_,i) => `<td class="er-num">${fmtM(r[i+1])}</td>`).join('')}
+            </tr>`).join('')}`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>` : '';
+
+  // ── 3. Revenue & Growth ──────────────────────────────────────────────────
+  const rg     = data.revenueGrowth || [];
+  const rgData = rg.filter(r => r?.[0] && r[0] !== 'MONTH' && !r[0].includes('PERIOD') && !r[0].includes('GROWTH') && r.length >= 3);
+
+  const s3 = rgData.length ? `
+  <div class="er-section">
+    <h2 class="er-section-title">📈 Year-on-Year Growth</h2>
+    <div class="er-table-wrap">
+      <table class="er-table">
+        <thead><tr>
+          <th>Period</th><th class="er-num">2026 (M)</th><th class="er-num">2025 (M)</th>
+          <th class="er-num">Value YOY%</th><th class="er-num">Vol YOY%</th><th class="er-num">Same Store%</th>
+        </tr></thead>
+        <tbody>
+          ${rgData.map(r => `<tr class="${r[0].includes('YTD')?'er-tot':''}">
+            <td>${esc(r[0])}</td>
+            <td class="er-num">${fmtM(r[1])}</td><td class="er-num">${fmtM(r[2])}</td>
+            <td class="er-num">${yoyBadge(r[3])}</td><td class="er-num">${yoyBadge(r[4])}</td>
+            <td class="er-num">${yoyBadge(r[5])}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>` : '';
+
+  // ── 4. Regional Performance ──────────────────────────────────────────────
+  const regions = (data.regionPerf || []).filter(r => r?.[0] && r[0] !== 'REGION' && !r[0].includes('JUNE') && !r[0].includes('PERFORMANCE'));
+
+  const s4 = regions.length ? `
+  <div class="er-section">
+    <h2 class="er-section-title">🗺 Regional Performance</h2>
+    <div class="er-region-grid">
+      ${regions.map(r => {
+        const pv   = pN(r[5]) ?? pN(r[4]) ?? 0;
+        const col  = pv >= 90 ? '#15803d' : pv >= 75 ? '#b45309' : '#c2410c';
+        const bgcl = pv >= 90 ? 'er-rc--green' : pv >= 75 ? 'er-rc--amber' : 'er-rc--red';
+        return `<div class="er-region-card ${bgcl}">
+          <div class="er-rc-name">${esc(r[0]||r[1])}</div>
+          <div class="er-rc-pct" style="color:${col}">${pv}%</div>
+          <div class="er-rc-detail">${fmtBig(r[2])} actual</div>
+          <div class="er-rc-detail er-muted">of ${fmtBig(r[3])} target</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>` : '';
+
+  // ── 5. Outlet Performance ────────────────────────────────────────────────
+  const allOutlets  = (data.outletsPerf || []).filter(r => r?.[0] && r[0] !== 'OUTLET');
+  const globalRow   = allOutlets.find(r => r[0].toUpperCase() === 'GLOBAL');
+  const outletRows  = allOutlets.filter(r => r[0].toUpperCase() !== 'GLOBAL')
+                       .sort((a,b) => (pN(b[5])||0) - (pN(a[5])||0));
+
+  const s5 = outletRows.length ? `
+  <div class="er-section">
+    <h2 class="er-section-title">🏪 Outlet Performance (Latest Month)</h2>
+    ${globalRow ? `<div class="er-global-bar">
+      <span><strong>GLOBAL TOTAL</strong></span>
+      <span>Actual: <strong>${fmtBig(globalRow[2])}</strong></span>
+      <span>Target: <strong>${fmtBig(globalRow[1])}</strong></span>
+      <span>Achievement: ${pctBadge(globalRow[5])}</span>
+    </div>` : ''}
+    <div class="er-table-wrap">
+      <table class="er-table">
+        <thead><tr>
+          <th>Outlet</th><th class="er-num">Target</th>
+          <th class="er-num">Actual Sales</th><th class="er-num">Variance</th><th class="er-num">Achievement</th>
+        </tr></thead>
+        <tbody>
+          ${outletRows.map(r => {
+            const diff = pN(r[4]);
+            const diffCol = diff !== null ? (diff >= 0 ? '#15803d' : '#c2410c') : '';
+            return `<tr>
+              <td>${esc(r[0])}</td>
+              <td class="er-num">${fmtBig(r[1])}</td>
+              <td class="er-num">${fmtBig(r[2])}</td>
+              <td class="er-num" style="color:${diffCol}">${fmtBig(r[4])}</td>
+              <td class="er-num">${pctBadge(r[5])}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>` : '';
+
+  // ── 6. Area Performance ──────────────────────────────────────────────────
+  const areaRaw = data.areaPerf || [];
+  const areaData = areaRaw.filter(r => r?.[1] && r[1] !== 'OUTLET' && !r[1].includes('AREA') && !r[1].includes('PERFORMANCE'));
+  let lastLeader = '';
+  const areaRows = areaData.map(r => {
+    if (r[0]) lastLeader = r[0];
+    return { leader: lastLeader, outlet: r[1], june: r[2], sales: r[3], diff: r[4], pct: r[5] };
+  });
+
+  const s6 = areaRows.length ? `
+  <div class="er-section">
+    <h2 class="er-section-title">👥 Area Coach Performance</h2>
+    <div class="er-table-wrap">
+      <table class="er-table">
+        <thead><tr>
+          <th>Area Leader</th><th>Outlet</th>
+          <th class="er-num">Target</th><th class="er-num">Sales</th>
+          <th class="er-num">Variance</th><th class="er-num">%</th>
+        </tr></thead>
+        <tbody>
+          ${areaRows.map(r => {
+            const isTotal = r.outlet?.toUpperCase() === 'TOTAL';
+            const diff = pN(r.diff);
+            return `<tr class="${isTotal?'er-tot':''}">
+              <td>${isTotal?'':esc(r.leader)}</td>
+              <td>${esc(r.outlet)}</td>
+              <td class="er-num">${fmtBig(r.june)}</td>
+              <td class="er-num">${fmtBig(r.sales)}</td>
+              <td class="er-num" style="color:${diff!==null?(diff>=0?'#15803d':'#c2410c'):''}">${fmtBig(r.diff)}</td>
+              <td class="er-num">${pctBadge(r.pct)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>` : '';
+
+  // ── 7. Category Performance ──────────────────────────────────────────────
+  const catRaw  = data.categorySalesLatest || [];
+  const catHdr  = catRaw.find(r => r?.[0] === 'DEPT');
+  const catRows = catRaw.filter(r => r?.[0] && r[0] !== 'DEPT' && !r[0].includes('CATEGORY') && !r[0].includes('PERFORMANCE'));
+
+  const s7 = catRows.length ? `
+  <div class="er-section">
+    <h2 class="er-section-title">🛒 Category Performance (Latest Month)</h2>
+    <div class="er-table-wrap">
+      <table class="er-table">
+        <thead><tr>
+          <th>Department</th>
+          <th class="er-num">${catHdr?.[1] ? esc(catHdr[1]) : 'Target'}</th>
+          <th class="er-num">${catHdr?.[2] ? esc(catHdr[2]) : 'Sales'}</th>
+          <th class="er-num">Difference</th><th class="er-num">Achievement%</th>
+        </tr></thead>
+        <tbody>
+          ${catRows.map(r => {
+            const diff = pN(r[3]);
+            return `<tr class="${r[0]==='TOTAL'?'er-tot':''}">
+              <td>${esc(r[0])}</td>
+              <td class="er-num">${fmtM(r[1])}</td>
+              <td class="er-num">${fmtM(r[2])}</td>
+              <td class="er-num" style="color:${diff!==null?(diff>=0?'#15803d':'#c2410c'):''}">${fmtM(r[3])}</td>
+              <td class="er-num">${pctBadge(r[4])}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>` : '';
+
+  // ── 8. Weekly Sales ──────────────────────────────────────────────────────
+  const ws = data.weeklySales || [];
+  const wsWeeks   = ws.find(r => r?.some(c => String(c).includes('Week')));
+  const wsDates   = ws.find(r => r?.some(c => String(c).match(/\d+(ST|TH|ND|RD)/i)));
+  const wsSales   = ws.find(r => r?.[0]?.includes('Sales'));
+  const wsDaily   = ws.find(r => r?.[0]?.includes('Daily'));
+  const weekLabels = wsWeeks ? wsWeeks.filter(Boolean).slice(1) : [];
+
+  let wsDiamondRows = [], wsSilverRows = [], inDia = false, inSil = false;
+  for (const r of ws) {
+    if (!r?.[0]) continue;
+    if (r[0].includes('Diamond')) { inDia = true; inSil = false; continue; }
+    if (r[0].includes('Silver'))  { inSil = true; inDia = false; continue; }
+    if (inDia) wsDiamondRows.push(r);
+    if (inSil) wsSilverRows.push(r);
+  }
+
+  const s8 = wsSales ? `
+  <div class="er-section">
+    <h2 class="er-section-title">📅 Weekly Sales Performance</h2>
+    <div class="er-table-wrap">
+      <table class="er-table">
+        <thead>
+          <tr><th></th>${weekLabels.map(w => `<th class="er-num">${esc(w)}</th>`).join('')}</tr>
+          ${wsDates ? `<tr class="er-date-row"><th></th>${wsDates.filter(Boolean).slice(1).map(d => `<th class="er-num er-muted" style="font-size:0.7rem">${esc(d)}</th>`).join('')}</tr>` : ''}
+        </thead>
+        <tbody>
+          <tr class="er-tot"><td>Sales (₦M)</td>${wsSales.slice(1).map(v => `<td class="er-num">${v||'—'}</td>`).join('')}</tr>
+          ${wsDaily ? `<tr><td>Daily Avg (₦M)</td>${wsDaily.slice(1).map(v => `<td class="er-num">${v||'—'}</td>`).join('')}</tr>` : ''}
+          ${wsDiamondRows.length ? `<tr class="er-sec-row"><td colspan="${weekLabels.length+1}">Diamond Lines — Stock Availability %</td></tr>
+            ${wsDiamondRows.map(r => `<tr><td style="padding-left:1.5rem">${esc(r[0])}</td>${r.slice(1).map(v=>`<td class="er-num">${v||'—'}</td>`).join('')}</tr>`).join('')}` : ''}
+          ${wsSilverRows.length ? `<tr class="er-sec-row"><td colspan="${weekLabels.length+1}">Silver Lines — Stock Availability %</td></tr>
+            ${wsSilverRows.map(r => `<tr><td style="padding-left:1.5rem">${esc(r[0])}</td>${r.slice(1).map(v=>`<td class="er-num">${v||'—'}</td>`).join('')}</tr>`).join('')}` : ''}
+        </tbody>
+      </table>
+    </div>
+  </div>` : '';
+
+  // ── 9. Utility & Power ───────────────────────────────────────────────────
+  const util = (data.utility || []).filter(r => r?.[0] && r[0] !== 'Description');
+  const s9 = util.length ? `
+  <div class="er-section">
+    <h2 class="er-section-title">⚡ Utility & Power Cost</h2>
+    <div class="er-table-wrap">
+      <table class="er-table">
+        <thead><tr><th>Description</th><th class="er-num">Previous Month</th><th class="er-num">Latest Month</th></tr></thead>
+        <tbody>
+          ${util.map(r => `<tr>
+            <td>${esc(r[0])}</td>
+            <td class="er-num">${fmtM(r[1]) !== '—' ? fmtM(r[1]) : (r[1]||'—')}</td>
+            <td class="er-num">${fmtM(r[2]) !== '—' ? fmtM(r[2]) : (r[2]||'—')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>` : '';
+
+  // ── Assemble ─────────────────────────────────────────────────────────────
+  const now = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' });
+  const latestLabel = latestM ? latestM[0] : '';
+
+  return `
+  <div class="exec-report" id="execReportDoc">
+    <div class="er-header">
+      <div class="er-header-left">
+        <img src="/foodco-logo.png" alt="Foodco" style="height:44px;object-fit:contain;" />
+        <div>
+          <div class="er-title">Foodco Nigeria Limited</div>
+          <div class="er-subtitle">Executive Business Report${latestLabel ? ' — ' + latestLabel : ''}</div>
+        </div>
+      </div>
+      <div class="er-header-right">
+        <div class="er-gen-date">Generated: ${now}</div>
+        <button class="btn-ghost" onclick="window.print()" style="margin-top:6px;font-size:0.8rem;">🖨 Print</button>
+      </div>
+    </div>
+    ${s1}${s2}${s3}${s4}${s5}${s6}${s7}${s8}${s9}
+  </div>`;
+}
+

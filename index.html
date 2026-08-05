@@ -9,6 +9,26 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#15803d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Foodco Scorecard" />
+  <link rel="apple-touch-icon" href="/foodco-logo.png" />
+  <script defer src="/_vercel/insights/script.js"></script>
+  <script
+    src="https://js.sentry-cdn.com/c3d14a2d93a5c824e29a47f58dc4cdce.min.js"
+    crossorigin="anonymous"
+  ></script>
+  <script>
+    Sentry.onLoad(function() {
+      Sentry.init({
+        dsn: 'https://c3d14a2d93a5c824e29a47f58dc4cdce@o4511350251978752.ingest.us.sentry.io/4511350275375104',
+        environment: 'production',
+        tracesSampleRate: 0.2,
+      });
+    });
+  </script>
 </head>
 <body>
 
@@ -123,7 +143,7 @@
     <form id="pinForm">
       <div class="field" style="margin-bottom:12px;">
         <label for="hsoEmail">Email</label>
-        <input type="email" id="hsoEmail" placeholder="hso@foodco.com" autocomplete="username" required />
+        <input type="email" id="hsoEmail" placeholder="hso@foodco.ng" autocomplete="username" required />
       </div>
       <div class="field" style="margin-bottom:16px;">
         <label for="hsoPassword">Password</label>
@@ -157,6 +177,9 @@
       <button class="admin-nav-item" data-atab="aQuarterly">
         <span class="ani-icon">📊</span><span class="ani-label">Quarterly Report</span>
       </button>
+      <button class="admin-nav-item" data-atab="aExecReport">
+        <span class="ani-icon">📊</span><span class="ani-label">Exec Report</span>
+      </button>
       <button class="admin-nav-item" data-atab="aSettings">
         <span class="ani-icon">⚙️</span><span class="ani-label">Settings</span>
       </button>
@@ -171,17 +194,17 @@
           <div class="field-row">
             <div class="field">
               <label for="newCoachName">Full Name</label>
-              <input type="text" id="newCoachName" placeholder="e.g. Jane Dlamini" required />
+              <input type="text" id="newCoachName" placeholder="e.g. Taiwo Adeyemi" required />
             </div>
             <div class="field">
               <label for="newCoachBranches">Branch(es)</label>
-              <input type="text" id="newCoachBranches" placeholder="e.g. CBD, Westpark, Fourways" />
+              <input type="text" id="newCoachBranches" placeholder="e.g. Ringroad, Bodija, Challenge" />
             </div>
           </div>
           <div class="field-row">
             <div class="field">
               <label for="newCoachEmail">Login Email</label>
-              <input type="email" id="newCoachEmail" placeholder="coach@example.com" required />
+              <input type="email" id="newCoachEmail" placeholder="areacoach@foodco.ng" required />
             </div>
             <div class="field">
               <label for="newCoachTempPassword">Temporary Password</label>
@@ -215,6 +238,55 @@
           <div id="pinChangeMsg" class="form-error hidden"></div>
           <div class="form-actions">
             <button type="submit" class="btn-primary">Update Password</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="kpi-card">
+        <h3 class="section-label">Security Questions</h3>
+        <p class="kpi-formula" style="margin-bottom:14px;">
+          Set two security questions so you can reset your password without email if you ever get locked out.
+        </p>
+        <form id="securityQForm">
+          <div class="field-row">
+            <div class="field">
+              <label for="sq1Select">Question 1</label>
+              <select id="sq1Select">
+                <option value="">— Select a question —</option>
+                <option>What was the name of your first pet?</option>
+                <option>What city were you born in?</option>
+                <option>What is your mother's maiden name?</option>
+                <option>What was the name of your primary school?</option>
+                <option>What was the make of your first car?</option>
+                <option>What street did you grow up on?</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="sq1Answer">Answer 1</label>
+              <input type="text" id="sq1Answer" placeholder="Your answer (case-insensitive)" autocomplete="off" />
+            </div>
+          </div>
+          <div class="field-row" style="margin-top:12px;">
+            <div class="field">
+              <label for="sq2Select">Question 2</label>
+              <select id="sq2Select">
+                <option value="">— Select a question —</option>
+                <option>What was the name of your first pet?</option>
+                <option>What city were you born in?</option>
+                <option>What is your mother's maiden name?</option>
+                <option>What was the name of your primary school?</option>
+                <option>What was the make of your first car?</option>
+                <option>What street did you grow up on?</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="sq2Answer">Answer 2</label>
+              <input type="text" id="sq2Answer" placeholder="Your answer (case-insensitive)" autocomplete="off" />
+            </div>
+          </div>
+          <div id="securityQMsg" class="form-error hidden" style="margin-top:10px;"></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="saveSecurityQBtn">Save Security Questions</button>
           </div>
         </form>
       </div>
@@ -307,6 +379,20 @@
       <div id="quarterlyReportContent"></div>
     </div>
 
+    <!-- ══ EXEC REPORT TAB ═══════════════════════════════════════════════ -->
+    <div id="aExecReport" class="atab-panel hidden">
+      <div class="kpi-card" style="margin-bottom:16px;">
+        <h3 class="section-label" style="margin-bottom:4px;">Executive Business Report</h3>
+        <p class="hint-text" style="margin-bottom:16px;">Reads the Foodco monthly sales spreadsheet and generates a consolidated report for executive review. No Google sign-in required.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <button class="btn-primary" id="execReportGenerateBtn">📊 Generate Report</button>
+          <span id="execReportSpinner" class="hint-text hidden">Reading spreadsheet…</span>
+        </div>
+        <div id="execReportError" class="form-error hidden" style="margin-top:10px;"></div>
+      </div>
+      <div id="execReportOutput"></div>
+    </div>
+
     </div><!-- /.admin-content -->
   </div><!-- /.admin-layout -->
 </div>
@@ -322,7 +408,7 @@
       <p class="card-sub">Use the credentials provided by your HSO.</p>
       <div class="field" style="margin:20px 0 12px;">
         <label for="coachEmail">Email</label>
-        <input type="email" id="coachEmail" placeholder="your@email.com" autocomplete="username" />
+        <input type="email" id="coachEmail" placeholder="areacoach@foodco.ng" autocomplete="username" />
       </div>
       <div class="field" style="margin-bottom:16px;">
         <label for="coachPassword">Password</label>
@@ -338,7 +424,7 @@
       <p class="card-sub">Enter the reset code your HSO shared with you, then set your new password.</p>
       <div class="field" style="margin:16px 0 10px;">
         <label for="resetCodeEmail">Your Email</label>
-        <input type="email" id="resetCodeEmail" placeholder="your@email.com" />
+        <input type="email" id="resetCodeEmail" placeholder="areacoach@foodco.ng" />
       </div>
       <div class="field" style="margin-bottom:10px;">
         <label for="resetCodeInput">Reset Code (from HSO)</label>
@@ -686,16 +772,46 @@
 <!-- ══ FORGOT PASSWORD MODAL ════════════════════════════════════════════════ -->
 <div id="forgotPasswordModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal-card">
-    <h3 class="modal-title">Reset Password</h3>
-    <p class="modal-body">Enter your email address and we'll send you a reset link.</p>
-    <div class="field" style="margin:16px 0 8px;">
-      <label for="resetEmail">Email</label>
-      <input type="email" id="resetEmail" placeholder="your@email.com" />
+    <h3 class="modal-title">Reset HSO Password</h3>
+
+    <!-- Step 1: email -->
+    <div id="fpm-step1">
+      <p class="modal-body">Enter your HSO email address to look up your security questions.</p>
+      <div class="field" style="margin:16px 0 8px;">
+        <label for="resetEmail">Email</label>
+        <input type="email" id="resetEmail" placeholder="hso@foodco.ng" />
+      </div>
+      <div id="resetMsg" class="form-error hidden"></div>
+      <div class="modal-actions">
+        <button class="btn-primary" id="fpmNextBtn">Next →</button>
+        <button class="btn-ghost" id="cancelResetBtn">Cancel</button>
+      </div>
     </div>
-    <div id="resetMsg" class="form-error hidden"></div>
-    <div class="modal-actions">
-      <button class="btn-primary" id="sendResetBtn">Send Reset Link</button>
-      <button class="btn-ghost" id="cancelResetBtn">Cancel</button>
+
+    <!-- Step 2: security questions + new password -->
+    <div id="fpm-step2" class="hidden">
+      <p class="modal-body" style="margin-bottom:16px;">Answer your security questions to set a new password.</p>
+      <div class="field" style="margin-bottom:8px;">
+        <label id="fpmQ1Label" style="font-weight:600;color:#374151;"></label>
+        <input type="text" id="fpmA1" placeholder="Your answer" autocomplete="off" />
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <label id="fpmQ2Label" style="font-weight:600;color:#374151;"></label>
+        <input type="text" id="fpmA2" placeholder="Your answer" autocomplete="off" />
+      </div>
+      <div class="field" style="margin-bottom:8px;">
+        <label for="fpmNewPass">New Password</label>
+        <input type="password" id="fpmNewPass" placeholder="Min 6 characters" minlength="6" />
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <label for="fpmConfirmPass">Confirm Password</label>
+        <input type="password" id="fpmConfirmPass" placeholder="Repeat new password" />
+      </div>
+      <div id="fpmStep2Msg" class="form-error hidden"></div>
+      <div class="modal-actions">
+        <button class="btn-primary" id="fpmResetBtn">Reset Password</button>
+        <button class="btn-ghost" id="fpmBackBtn">← Back</button>
+      </div>
     </div>
   </div>
 </div>
@@ -745,8 +861,8 @@
 <div id="aiChatPanel" class="ai-panel ai-panel--closed" aria-label="AI Insights" role="dialog">
   <div class="ai-panel-header">
     <div class="ai-panel-title">
-      <span class="ai-panel-icon">✨</span>
-      <span>AI Insights</span>
+      <span class="ai-panel-icon">🔬</span>
+      <span>AI Intelligence · <span style="font-size:0.72rem;font-weight:400;opacity:0.6;">Trained by Tommy Cursor</span></span>
     </div>
     <button class="ai-panel-close" onclick="toggleAIPanel()" aria-label="Close AI panel">✕</button>
   </div>
@@ -768,11 +884,16 @@
 
 <!-- ══ AI FLOATING BUTTON ══════════════════════════════════════════════════ -->
 <button class="ai-fab" id="aiFab" onclick="toggleAIPanel()" title="AI Insights" aria-label="Open AI Insights">
-  <span class="ai-fab-icon">AI</span>
+  <img src="/ai-avatar.png" alt="AI Assistant" class="ai-fab-avatar" />
 </button>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sheets.js"></script>
 <script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+  }
+</script>
 </body>
 </html>
