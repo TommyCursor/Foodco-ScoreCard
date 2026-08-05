@@ -3261,30 +3261,47 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 1: Cover ────────────────────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:C.green}});
-      s.addShape(pptx.ShapeType.rect,{x:0,y:H*0.63,w:W,h:H*0.37,fill:{color:'0F4C28'}});
-      // Logo — exact size from original: 4.17" × 1.39"
-      const lw=4.17, lh=1.39;
+      // 1. Rich dark green base
+      s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:'0D3318'}});
+      // 2. Black overlay — creates the dramatic dark effect like the original photo
+      //    transparency:45 = 55% opaque black on top of dark green
+      s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:'000000',transparency:45}});
+      // 3. Thin orange bar at very bottom (brand accent)
+      s.addShape(pptx.ShapeType.rect,{x:0,y:H-0.07,w:W,h:0.07,fill:{color:C.orange}});
+
+      // 4. Logo — exact position scaled from original 17.78×10" → 13.33×7.5"
+      //    Original: x=6.81, y=2.78, w=4.17, h=1.39  ×  (13.33/17.78 = 0.7497)
+      const lw=3.13, lh=1.04, lx=5.10, ly=2.08;
+      // Thin green accent line above logo (matching original)
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly-0.18,w:6.33,h:0.04,fill:{color:'4ade80'}});
       if (logoDataUrl) {
-        // Tight white card with minimal padding (logo has green text — needs white bg on green slide)
-        s.addShape(pptx.ShapeType.roundRect,{x:(W-lw)/2-0.15,y:0.35,w:lw+0.3,h:lh+0.22,fill:{color:C.white},line:{color:C.white,pt:0},rectRadius:0.07});
-        s.addImage({data:logoDataUrl, x:(W-lw)/2, y:0.46, w:lw, h:lh});
+        s.addImage({data:logoDataUrl, x:lx, y:ly, w:lw, h:lh});
       }
-      // Thin green divider below logo
-      s.addShape(pptx.ShapeType.rect,{x:3.5,y:2.08,w:6.33,h:0.04,fill:{color:'5fa86e'}});
-      // Title: Liter 52 Bold
-      s.addText(`${fullMonth.toUpperCase()} 2026 SALES REPORT`,{x:0.3,y:2.18,w:W-0.6,h:1.1,fontSize:52,bold:true,color:C.white,align:'center',fontFace:'Liter'});
-      // Subtitle: Liter 24
-      s.addText('FOODCO NIGERIA',{x:0.5,y:3.22,w:W-1,h:0.55,fontSize:24,color:'AADDB0',align:'center',fontFace:'Liter'});
-      // Thin divider below subtitle
-      s.addShape(pptx.ShapeType.rect,{x:3.5,y:3.88,w:6.33,h:0.04,fill:{color:'AADDB0'}});
-      // "Presented by Ayodele Adio" — Quattrocento Sans 20, Adio bold
-      s.addText([{text:'Presented by ',options:{bold:false}},{text:'Ayodele Adio',options:{bold:true}}],
-        {x:0.5,y:4.05,w:W-1,h:0.48,fontSize:20,color:C.white,align:'center',fontFace:'Quattrocento Sans'});
-      // "Head, Sales Operations" — Quattrocento Sans 20
-      s.addText('Head, Sales Operations',{x:0.5,y:4.57,w:W-1,h:0.48,fontSize:20,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
-      // Date — Quattrocento Sans 16
-      s.addText(presDate,{x:0.5,y:5.1,w:W-1,h:0.4,fontSize:16,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
+      // Thin green line below logo
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly+lh+0.1,w:6.33,h:0.04,fill:{color:'4ade80'}});
+
+      // 5. Title — Liter 52 Bold
+      s.addText(`${fullMonth.toUpperCase()} 2026 SALES REPORT`,{
+        x:0.3,y:ly+lh+0.22,w:W-0.6,h:0.95,
+        fontSize:52,bold:true,color:C.white,align:'center',fontFace:'Liter'});
+      // 6. Subtitle — Liter 24
+      s.addText('FOODCO NIGERIA',{
+        x:0.5,y:ly+lh+1.22,w:W-1,h:0.5,
+        fontSize:24,color:'AADDB0',align:'center',fontFace:'Liter'});
+      // 7. Thin divider below subtitle
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly+lh+1.82,w:6.33,h:0.04,fill:{color:'6B8F72'}});
+      // 8. Presented by Ayodele Adio — Quattrocento Sans 20, name bold
+      s.addText([{text:'Presented by ',options:{bold:false}},{text:'Ayodele Adio',options:{bold:true}}],{
+        x:0.5,y:ly+lh+1.97,w:W-1,h:0.5,
+        fontSize:20,color:C.white,align:'center',fontFace:'Quattrocento Sans'});
+      // 9. Head, Sales Operations — Quattrocento Sans 20
+      s.addText('Head, Sales Operations',{
+        x:0.5,y:ly+lh+2.5,w:W-1,h:0.5,
+        fontSize:20,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
+      // 10. Date — Quattrocento Sans 16
+      s.addText(presDate,{
+        x:0.5,y:ly+lh+3.05,w:W-1,h:0.4,
+        fontSize:16,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
     }
 
     // ── SLIDE 2: Executive Overview ───────────────────────────────────────────
@@ -3565,22 +3582,24 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 12: Thank You ────────────────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:C.green}});
-      s.addShape(pptx.ShapeType.rect,{x:0,y:H*0.63,w:W,h:H*0.37,fill:{color:'0F4C28'}});
+      s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:'0D3318'}});
+      s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:'000000',transparency:45}});
+      s.addShape(pptx.ShapeType.rect,{x:0,y:H-0.07,w:W,h:0.07,fill:{color:C.orange}});
       if (logoDataUrl) {
-        const lw=3.8, lh=1.09;
-        s.addImage({data:logoDataUrl, x:(W-lw)/2, y:0.5, w:lw, h:lh});
+        const tlw=3.13, tlh=1.04;
+        s.addShape(pptx.ShapeType.rect,{x:3.5,y:1.05,w:6.33,h:0.04,fill:{color:'4ade80'}});
+        s.addImage({data:logoDataUrl, x:(W-tlw)/2, y:1.15, w:tlw, h:tlh});
+        s.addShape(pptx.ShapeType.rect,{x:3.5,y:1.15+tlh+0.1,w:6.33,h:0.04,fill:{color:'4ade80'}});
       }
-      s.addShape(pptx.ShapeType.rect,{x:2.17,y:1.85,w:9.0,h:0.07,fill:{color:C.orange}});
-      s.addText('THANK YOU',{x:0.5,y:2.0,w:W-1,h:1.1,fontSize:52,bold:true,color:C.white,align:'center'});
-      s.addShape(pptx.ShapeType.rect,{x:2.17,y:3.2,w:9.0,h:0.07,fill:{color:C.orange}});
-      s.addText('FoodCo Nigeria Limited',{x:0.5,y:3.35,w:W-1,h:0.5,fontSize:16,bold:true,color:C.white,align:'center'});
-      s.addText(`${fullMonth} 2026 Sales Report`,{x:0.5,y:3.9,w:W-1,h:0.4,fontSize:13,color:'AADDB0',align:'center'});
+      s.addText('THANK YOU',{x:0.3,y:2.42,w:W-0.6,h:1.0,fontSize:52,bold:true,color:C.white,align:'center',fontFace:'Liter'});
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:3.52,w:6.33,h:0.04,fill:{color:'6B8F72'}});
+      s.addText('FoodCo Nigeria Limited',{x:0.5,y:3.65,w:W-1,h:0.5,fontSize:18,bold:true,color:C.white,align:'center',fontFace:'Quattrocento Sans'});
+      s.addText(`${fullMonth} 2026 Sales Report`,{x:0.5,y:4.2,w:W-1,h:0.4,fontSize:16,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
       const hi=[];
       if(ytdRg) hi.push(`BIZ YTD Growth: ${_pN(ytdRg[3])?.toFixed(1)}%`);
       if(globalOutlet) hi.push(`Global Achievement: ${_normPct(globalOutlet[5])?.toFixed(1)}%`);
       if(latestRg) hi.push(`${latestRg[0]} Val YoY: ${_pN(latestRg[3])?.toFixed(1)}%`);
-      if(hi.length) s.addText(hi.join('   ·   '),{x:0.5,y:5.5,w:W-1,h:0.5,fontSize:11,color:'77BB88',align:'center'});
+      if(hi.length) s.addText(hi.join('   ·   '),{x:0.5,y:5.2,w:W-1,h:0.5,fontSize:12,color:'77BB88',align:'center',fontFace:'Quattrocento Sans'});
     }
 
     await pptx.writeFile({fileName:`FoodCo_${label}_2026_Sales_Report.pptx`});
