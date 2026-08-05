@@ -3263,25 +3263,25 @@ window.downloadAsPptx = async function() {
       const s = pptx.addSlide();
       s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:C.green}});
       s.addShape(pptx.ShapeType.rect,{x:0,y:H*0.63,w:W,h:H*0.37,fill:{color:'0F4C28'}});
-      // FoodCo logo (white bg removed)
+      // White card behind logo so green logo text is visible on green bg
+      const lw=4.2, lh=1.2;
+      s.addShape(pptx.ShapeType.roundRect,{x:(W-lw)/2-0.3,y:0.35,w:lw+0.6,h:lh+0.35,fill:{color:C.white},line:{color:'E5E7EB',pt:0.5},rectRadius:0.08});
       if (logoDataUrl) {
-        const lw=4.4, lh=1.26;  // ~3.5:1 aspect ratio
         s.addImage({data:logoDataUrl, x:(W-lw)/2, y:0.5, w:lw, h:lh});
       }
-      // Divider below logo
-      s.addShape(pptx.ShapeType.rect,{x:2.17,y:2.05,w:9.0,h:0.07,fill:{color:C.orange}});
-      // Month + year
-      s.addText(`${fullMonth.toUpperCase()} 2026`,{x:0.5,y:2.2,w:W-1,h:1.3,fontSize:60,bold:true,color:C.white,align:'center'});
-      // "SALES REPORT" letter-spaced
-      s.addText('SALES REPORT',{x:0.5,y:3.35,w:W-1,h:0.65,fontSize:24,color:'AADDB0',align:'center',charSpacing:7});
-      // Divider below title
-      s.addShape(pptx.ShapeType.rect,{x:2.17,y:4.1,w:9.0,h:0.07,fill:{color:C.orange}});
-      // Company name
-      s.addText('FoodCo Nigeria Limited',{x:0.5,y:4.25,w:W-1,h:0.52,fontSize:18,bold:true,color:C.white,align:'center'});
-      // Presenter
-      s.addText('Presented by Ayodele Adio  ·  Head of Sales Operations',{x:0.5,y:4.85,w:W-1,h:0.38,fontSize:12,color:'AADDB0',align:'center'});
-      // Presentation date (month after report = when it's presented)
-      s.addText(presDate,{x:0.5,y:5.28,w:W-1,h:0.35,fontSize:11,color:'77BB88',align:'center'});
+      // Thin green divider below logo (matching original)
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:2.08,w:6.33,h:0.04,fill:{color:'5fa86e'}});
+      // Title as ONE line: "JUNE 2026 SALES REPORT"
+      s.addText(`${fullMonth.toUpperCase()} 2026 SALES REPORT`,{x:0.3,y:2.2,w:W-0.6,h:1.1,fontSize:44,bold:true,color:C.white,align:'center'});
+      // "FOODCO NIGERIA" subtitle
+      s.addText('FOODCO NIGERIA',{x:0.5,y:3.28,w:W-1,h:0.5,fontSize:18,color:'AADDB0',align:'center',charSpacing:3});
+      // Thin divider below subtitle
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:3.9,w:6.33,h:0.04,fill:{color:'AADDB0'}});
+      // Presenter — "Presented by [bold]Ayodele Adio[/bold]"
+      s.addText([{text:'Presented by ',options:{bold:false}},{text:'Ayodele Adio',options:{bold:true}}],
+        {x:0.5,y:4.1,w:W-1,h:0.42,fontSize:13,color:C.white,align:'center'});
+      s.addText('Head, Sales Operations',{x:0.5,y:4.55,w:W-1,h:0.38,fontSize:12,color:'AADDB0',align:'center'});
+      s.addText(presDate,{x:0.5,y:5.0,w:W-1,h:0.35,fontSize:11,color:'AADDB0',align:'center'});
     }
 
     // ── SLIDE 2: Executive Overview ───────────────────────────────────────────
