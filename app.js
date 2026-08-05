@@ -3271,36 +3271,36 @@ window.downloadAsPptx = async function() {
 
       // 4. Logo — original displayed at ~3:1 ratio but intentionally stretched tall for presence
       //    Scaled from 17.78×10 original, then height boosted to match original visual weight
-      const lw=6.5, lh=3.0, lx=(W-6.5)/2, ly=0.9;
+      const lw=6.5, lh=4.4, lx=(W-6.5)/2, ly=0.1;
       // Thin green accent line above logo
       s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly-0.16,w:6.33,h:0.04,fill:{color:'4ade80'}});
       if (logoDataUrl) {
         s.addImage({data:logoDataUrl, x:lx, y:ly, w:lw, h:lh});
       }
       // Thin green line below logo
-      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly+lh+0.1,w:6.33,h:0.04,fill:{color:'4ade80'}});
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly+lh+0.08,w:6.33,h:0.04,fill:{color:'4ade80'}});
 
       // 5. Title — Liter 52 Bold
       s.addText(`${fullMonth.toUpperCase()} 2026 SALES REPORT`,{
-        x:0.3,y:ly+lh+0.22,w:W-0.6,h:0.95,
+        x:0.3,y:ly+lh+0.18,w:W-0.6,h:0.88,
         fontSize:52,bold:true,color:C.white,align:'center',fontFace:'Liter'});
       // 6. Subtitle — Liter 24
       s.addText('FOODCO NIGERIA',{
-        x:0.5,y:ly+lh+1.2,w:W-1,h:0.5,
+        x:0.5,y:ly+lh+1.08,w:W-1,h:0.42,
         fontSize:24,color:'AADDB0',align:'center',fontFace:'Liter'});
       // 7. Thin divider below subtitle
-      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly+lh+1.8,w:6.33,h:0.04,fill:{color:'6B8F72'}});
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly+lh+1.57,w:6.33,h:0.04,fill:{color:'6B8F72'}});
       // 8. Presented by Ayodele Adio — Quattrocento Sans 20, name bold
       s.addText([{text:'Presented by ',options:{bold:false}},{text:'Ayodele Adio',options:{bold:true}}],{
-        x:0.5,y:ly+lh+1.95,w:W-1,h:0.5,
+        x:0.5,y:ly+lh+1.67,w:W-1,h:0.44,
         fontSize:20,color:C.white,align:'center',fontFace:'Quattrocento Sans'});
       // 9. Head, Sales Operations — Quattrocento Sans 20
       s.addText('Head, Sales Operations',{
-        x:0.5,y:ly+lh+2.48,w:W-1,h:0.5,
+        x:0.5,y:ly+lh+2.13,w:W-1,h:0.44,
         fontSize:20,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
       // 10. Date — Quattrocento Sans 16
       s.addText(presDate,{
-        x:0.5,y:ly+lh+3.0,w:W-1,h:0.4,
+        x:0.5,y:ly+lh+2.6,w:W-1,h:0.36,
         fontSize:16,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
     }
 
