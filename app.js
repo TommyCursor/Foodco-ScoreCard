@@ -3075,6 +3075,14 @@ function useAISuggestion(el) {
 
 // ── Executive Report Renderer ─────────────────────────────────────────────
 
+// Global tab switcher for exec report — must be global because onclick= in innerHTML can't see closure scope
+window.erSwitchTab = function(id, btn) {
+  document.querySelectorAll('.er-tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.er-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('er-panel-' + id)?.classList.add('active');
+  btn.classList.add('active');
+};
+
 function renderExecReport(data) {
   // ── Helpers ────────────────────────────────────────────────────────────────
   function pN(v) {
@@ -3602,13 +3610,6 @@ function renderExecReport(data) {
       ${utilSlide}
     </div>
   </div>
-  <script>
-    function erSwitchTab(id, btn) {
-      document.querySelectorAll('.er-tab-panel').forEach(p => p.classList.remove('active'));
-      document.querySelectorAll('.er-tab').forEach(b => b.classList.remove('active'));
-      document.getElementById('er-panel-' + id)?.classList.add('active');
-      btn.classList.add('active');
-    }
-  </script>`;
+  `;
 }
 
