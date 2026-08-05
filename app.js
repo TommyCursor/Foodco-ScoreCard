@@ -3164,6 +3164,14 @@ window.downloadAsPptx = async function() {
     const ytdRowD  = ytdAll.find(r=>(r[0]||'').toUpperCase()==='YTD');
     const latestM  = ytdMonths[ytdMonths.length-1];
     const label    = (latestM?.[0]||'JUNE').toUpperCase();
+    const _MFULL   = {JAN:'January',FEB:'February',MAR:'March',APR:'April',MAY:'May',JUN:'June',JUL:'July',AUG:'August',SEP:'September',OCT:'October',NOV:'November',DEC:'December'};
+    const _MNUM    = {JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
+    const _MNAMES  = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+    const fullMonth = _MFULL[label] || label;
+    const repMNum   = _MNUM[label] || 6;
+    const presMNum  = repMNum === 12 ? 1 : repMNum + 1;
+    const presYear  = repMNum === 12 ? 2027 : 2026;
+    const presDate  = `${_MNAMES[presMNum]} ${presYear}`;
 
     const rov = reportData.revenueOverview||[];
     const rovHdr = rov.find(r=>r?.slice(1).some(c=>/jan|feb|mar|apr|may|jun/i.test(String(c))));
@@ -3221,17 +3229,59 @@ window.downloadAsPptx = async function() {
 
     const util_d = (reportData.utility||[]).filter(r=>r?.[0]&&!/desc|header/i.test(r[0]));
 
+    // ── Logo loader (white-bg removal via canvas) ──────────────────────────────
+    const logoDataUrl = await (async () => {
+      try {
+        const res = await fetch('./foodco-logo.png');
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return await new Promise(resolve => {
+          const img = new Image();
+          const burl = URL.createObjectURL(blob);
+          img.onload = () => {
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth; c.height = img.naturalHeight;
+            const ctx = c.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const id = ctx.getImageData(0, 0, c.width, c.height);
+            const px = id.data;
+            for (let i = 0; i < px.length; i += 4) {
+              if (px[i] > 235 && px[i+1] > 235 && px[i+2] > 235) px[i+3] = 0;
+            }
+            ctx.putImageData(id, 0, 0);
+            URL.revokeObjectURL(burl);
+            resolve(c.toDataURL('image/png'));
+          };
+          img.onerror = () => { URL.revokeObjectURL(burl); resolve(null); };
+          img.src = burl;
+        });
+      } catch { return null; }
+    })();
+
     // ── SLIDE 1: Cover ────────────────────────────────────────────────────────
     {
       const s = pptx.addSlide();
       s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:C.green}});
-      s.addShape(pptx.ShapeType.rect,{x:0,y:H*0.58,w:W,h:H*0.42,fill:{color:'0F4C28'}});
-      s.addShape(pptx.ShapeType.rect,{x:3.5,y:3.15,w:6.33,h:0.07,fill:{color:C.orange}});
-      s.addText(`${label} 2026`,{x:0.5,y:1.0,w:W-1,h:1.3,fontSize:52,bold:true,color:C.white,align:'center'});
-      s.addText('SALES REPORT',{x:0.5,y:2.1,w:W-1,h:0.85,fontSize:30,color:'AADDB0',align:'center',charSpacing:5});
-      s.addText('FoodCo Nigeria Limited',{x:0.5,y:3.35,w:W-1,h:0.6,fontSize:18,bold:true,color:C.white,align:'center'});
-      s.addText('Presented by Ayodele Adio  ·  Head of Sales Operations',{x:0.5,y:4.1,w:W-1,h:0.4,fontSize:12,color:'AADDB0',align:'center'});
-      s.addText(new Date().toLocaleDateString('en-NG',{day:'numeric',month:'long',year:'numeric'}),{x:0.5,y:4.65,w:W-1,h:0.35,fontSize:10,color:'77BB88',align:'center'});
+      s.addShape(pptx.ShapeType.rect,{x:0,y:H*0.63,w:W,h:H*0.37,fill:{color:'0F4C28'}});
+      // FoodCo logo (white bg removed)
+      if (logoDataUrl) {
+        const lw=4.4, lh=1.26;  // ~3.5:1 aspect ratio
+        s.addImage({data:logoDataUrl, x:(W-lw)/2, y:0.5, w:lw, h:lh});
+      }
+      // Divider below logo
+      s.addShape(pptx.ShapeType.rect,{x:2.17,y:2.05,w:9.0,h:0.07,fill:{color:C.orange}});
+      // Month + year
+      s.addText(`${fullMonth.toUpperCase()} 2026`,{x:0.5,y:2.2,w:W-1,h:1.3,fontSize:60,bold:true,color:C.white,align:'center'});
+      // "SALES REPORT" letter-spaced
+      s.addText('SALES REPORT',{x:0.5,y:3.35,w:W-1,h:0.65,fontSize:24,color:'AADDB0',align:'center',charSpacing:7});
+      // Divider below title
+      s.addShape(pptx.ShapeType.rect,{x:2.17,y:4.1,w:9.0,h:0.07,fill:{color:C.orange}});
+      // Company name
+      s.addText('FoodCo Nigeria Limited',{x:0.5,y:4.25,w:W-1,h:0.52,fontSize:18,bold:true,color:C.white,align:'center'});
+      // Presenter
+      s.addText('Presented by Ayodele Adio  ·  Head of Sales Operations',{x:0.5,y:4.85,w:W-1,h:0.38,fontSize:12,color:'AADDB0',align:'center'});
+      // Presentation date (month after report = when it's presented)
+      s.addText(presDate,{x:0.5,y:5.28,w:W-1,h:0.35,fontSize:11,color:'77BB88',align:'center'});
     }
 
     // ── SLIDE 2: Executive Overview ───────────────────────────────────────────
@@ -3513,16 +3563,21 @@ window.downloadAsPptx = async function() {
     {
       const s = pptx.addSlide();
       s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:C.green}});
-      s.addShape(pptx.ShapeType.rect,{x:0,y:H*0.58,w:W,h:H*0.42,fill:{color:'0F4C28'}});
-      s.addShape(pptx.ShapeType.rect,{x:3.5,y:2.9,w:6.33,h:0.07,fill:{color:C.orange}});
-      s.addText('Thank You',{x:0.5,y:1.1,w:W-1,h:1.3,fontSize:46,bold:true,color:C.white,align:'center'});
-      s.addText('FoodCo Nigeria Limited',{x:0.5,y:3.1,w:W-1,h:0.6,fontSize:16,bold:true,color:'AADDB0',align:'center'});
-      s.addText(`${label} 2026 Sales Report`,{x:0.5,y:3.75,w:W-1,h:0.45,fontSize:13,color:'AADDB0',align:'center'});
+      s.addShape(pptx.ShapeType.rect,{x:0,y:H*0.63,w:W,h:H*0.37,fill:{color:'0F4C28'}});
+      if (logoDataUrl) {
+        const lw=3.8, lh=1.09;
+        s.addImage({data:logoDataUrl, x:(W-lw)/2, y:0.5, w:lw, h:lh});
+      }
+      s.addShape(pptx.ShapeType.rect,{x:2.17,y:1.85,w:9.0,h:0.07,fill:{color:C.orange}});
+      s.addText('THANK YOU',{x:0.5,y:2.0,w:W-1,h:1.1,fontSize:52,bold:true,color:C.white,align:'center'});
+      s.addShape(pptx.ShapeType.rect,{x:2.17,y:3.2,w:9.0,h:0.07,fill:{color:C.orange}});
+      s.addText('FoodCo Nigeria Limited',{x:0.5,y:3.35,w:W-1,h:0.5,fontSize:16,bold:true,color:C.white,align:'center'});
+      s.addText(`${fullMonth} 2026 Sales Report`,{x:0.5,y:3.9,w:W-1,h:0.4,fontSize:13,color:'AADDB0',align:'center'});
       const hi=[];
       if(ytdRg) hi.push(`BIZ YTD Growth: ${_pN(ytdRg[3])?.toFixed(1)}%`);
       if(globalOutlet) hi.push(`Global Achievement: ${_normPct(globalOutlet[5])?.toFixed(1)}%`);
       if(latestRg) hi.push(`${latestRg[0]} Val YoY: ${_pN(latestRg[3])?.toFixed(1)}%`);
-      if(hi.length) s.addText(hi.join('   ·   '),{x:0.5,y:5.3,w:W-1,h:0.5,fontSize:11,color:'77BB88',align:'center'});
+      if(hi.length) s.addText(hi.join('   ·   '),{x:0.5,y:5.5,w:W-1,h:0.5,fontSize:11,color:'77BB88',align:'center'});
     }
 
     await pptx.writeFile({fileName:`FoodCo_${label}_2026_Sales_Report.pptx`});
