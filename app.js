@@ -3076,323 +3076,475 @@ function useAISuggestion(el) {
 // ── Executive Report Renderer ─────────────────────────────────────────────
 
 function renderExecReport(data) {
+  // ── Helpers ────────────────────────────────────────────────────────────────
   function pN(v) {
     if (v == null || v === '') return null;
-    const n = parseFloat(String(v).replace(/[,\s₦]/g,'').replace(/%$/,''));
+    const n = parseFloat(String(v).replace(/[,\s₦NB]/g,'').replace(/%$/,''));
     return isNaN(n) ? null : n;
   }
   function fmtBig(v) {
     const n = pN(v); if (n === null) return '—';
-    if (Math.abs(n) >= 1e9) return `₦${(n/1e9).toFixed(2)}B`;
-    if (Math.abs(n) >= 1e6) return `₦${(n/1e6).toFixed(1)}M`;
-    return `₦${n.toLocaleString('en-NG',{maximumFractionDigits:0})}`;
+    if (Math.abs(n) >= 1000) return `N${(n/1000).toFixed(2)}B`;
+    if (Math.abs(n) >= 1)    return `N${n.toFixed(1)}M`;
+    return `N${n.toFixed(2)}M`;
   }
-  function fmtM(v) {
-    const n = pN(v); if (n === null) return '—';
-    return n.toLocaleString('en-NG',{maximumFractionDigits:0});
+  function fmtM(v, dp=1) {
+    const n = pN(v); if (n === null) return v || '—';
+    return n % 1 === 0 ? n.toLocaleString() : n.toFixed(dp);
   }
-  function pctBadge(v, g=90, f=75) {
+  function yoySpan(v) {
     const n = pN(v); if (n === null) return '<span class="er-muted">—</span>';
-    const col = n >= g ? '#15803d' : n >= f ? '#b45309' : '#c2410c';
-    const disp = String(v).includes('%') ? String(v) : `${n.toFixed(1)}%`;
-    return `<span style="color:${col};font-weight:600">${disp}</span>`;
+    const col = n >= 0 ? '#15803d' : '#dc2626';
+    const s = String(v).includes('%') ? String(v) : `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+    return `<span style="color:${col};font-weight:700">${s}</span>`;
   }
-  function yoyBadge(v) {
+  function statusBadge(v) {
     const n = pN(v); if (n === null) return '<span class="er-muted">—</span>';
-    const col = n >= 0 ? '#15803d' : '#c2410c';
-    return `<span style="color:${col};font-weight:600">${n >= 0 ? '+' : ''}${n.toFixed(1)}%</span>`;
+    let cls, label;
+    if (n >= 100)      { cls = 'er-status-great';      label = 'GREAT'; }
+    else if (n >= 90)  { cls = 'er-status-stable';     label = 'STABLE'; }
+    else if (n >= 80)  { cls = 'er-status-weak';       label = 'WEAK'; }
+    else               { cls = 'er-status-concerning'; label = 'CONCERNING'; }
+    return `<span class="${cls}">${label}</span>`;
+  }
+  function pctSpan(v) {
+    const n = pN(v); if (n === null) return '<span class="er-muted">—</span>';
+    const col = n >= 90 ? '#15803d' : n >= 80 ? '#d97706' : '#dc2626';
+    const s = String(v).includes('%') ? String(v) : `${n.toFixed(1)}%`;
+    return `<span style="color:${col};font-weight:700">${s}</span>`;
+  }
+  function slideTitle(text) {
+    return `<h2 class="er-slide-title">${text}</h2>`;
+  }
+  function kpiCard(label, value, sub, color='#15803d', bg='#f0fdf4') {
+    return `<div class="er-kpi-card" style="background:${bg}">
+      <div class="er-kpi-label">${label}</div>
+      <div class="er-kpi-value" style="color:${color}">${value}</div>
+      ${sub ? `<div class="er-kpi-sub">${sub}</div>` : ''}
+    </div>`;
+  }
+  function insightBox(html, type='green') {
+    return `<div class="er-insight er-insight--${type}">${html}</div>`;
   }
 
-  // ── 1. Business YTD ──────────────────────────────────────────────────────
+  // ── DATA PARSING ──────────────────────────────────────────────────────────
+  const now = new Date().toLocaleDateString('en-NG',{day:'numeric',month:'long',year:'numeric'});
+
+  // Business YTD
   const ytdAll   = (data.businessYTD || []).filter(r => r?.[0]);
-  const months   = ytdAll.filter(r => r[0].toUpperCase() !== 'MONTH' && r[0].toUpperCase() !== 'YTD');
-  const ytdTotal = ytdAll.find(r => r[0]?.toUpperCase() === 'YTD');
-  const latestM  = months[months.length - 1];
+  const ytdMonths= ytdAll.filter(r => !['MONTH','YTD','TOTAL'].includes((r[0]||'').toUpperCase()));
+  const ytdRow   = ytdAll.find(r => (r[0]||'').toUpperCase()==='YTD');
+  const latestM  = ytdMonths[ytdMonths.length - 1];
+  const latestLabel = latestM?.[0] || '';
 
-  const s1 = `
-  <div class="er-section">
-    <h2 class="er-section-title">📅 Business YTD Revenue</h2>
-    <div class="er-month-strip">
-      ${months.map(r => {
-        const v = pN(r[1]);
-        return `<div class="er-month-card">
-          <div class="er-mc-label">${esc(r[0])}</div>
-          <div class="er-mc-value">₦${v !== null ? v.toFixed(2) : '—'}B</div>
-        </div>`;
-      }).join('')}
-      ${ytdTotal ? `<div class="er-month-card er-month-card--total">
-        <div class="er-mc-label">YTD TOTAL</div>
-        <div class="er-mc-value">₦${pN(ytdTotal[1])?.toFixed(2) ?? '—'}B</div>
-      </div>` : ''}
+  // ── REVENUE TAB ───────────────────────────────────────────────────────────
+  // Executive Overview quadrant cards
+  const execOverview = `
+  <div class="er-slide">
+    ${slideTitle('EXECUTIVE OVERVIEW')}
+    <div class="er-quad-grid">
+      <div class="er-quad er-quad--green">
+        <div class="er-quad-num">01</div>
+        <div class="er-quad-name">REVENUE</div>
+        <div class="er-quad-desc">YTD Revenue Performance, Core Business Overview, and Monthly Revenue Trends across all business lines</div>
+      </div>
+      <div class="er-quad er-quad--orange">
+        <div class="er-quad-num">02</div>
+        <div class="er-quad-name">GROWTH</div>
+        <div class="er-quad-desc">Period Growth Analysis, Year-over-Year comparisons, and Same Store performance metrics</div>
+      </div>
+      <div class="er-quad er-quad--green">
+        <div class="er-quad-num">03</div>
+        <div class="er-quad-name">OUTLETS</div>
+        <div class="er-quad-desc">Outlet Performance, Regional Analysis, Area Leaders, and Top 5 Store Rankings</div>
+      </div>
+      <div class="er-quad er-quad--orange">
+        <div class="er-quad-num">04</div>
+        <div class="er-quad-name">CATEGORY</div>
+        <div class="er-quad-desc">Category Sales YTD, Monthly Category Performance, Target Achievement, and Weekly Analysis</div>
+      </div>
     </div>
   </div>`;
 
-  // ── 2. Revenue Overview ──────────────────────────────────────────────────
+  // ── REVENUE: Core Business table ─────────────────────────────────────────
   const rov = data.revenueOverview || [];
-  const rovHdr = rov.find(r => r?.[1]?.includes('-') || r?.[1]?.includes('Jan') || r?.[1]?.includes('JAN'));
-  const rovMonths = rovHdr ? rovHdr.slice(1).filter(Boolean) : [];
-
-  let rovSections = [], curSecName = '', curSecRows = [];
+  const rovHdr = rov.find(r => r?.slice(1).some(c => /jan|feb|mar|apr|may|jun/i.test(String(c))));
+  const rovCols = rovHdr ? rovHdr.slice(1).filter(Boolean) : [];
+  let coreBizRows = [], otherBizRows = [], inCore = false, inOther = false;
   for (const r of rov) {
     if (!r?.[0]) continue;
-    if (r[0].includes('Revenue Overview') || r[0].includes('revenue')) continue;
-    if (r[0].includes('Core Business') || r[0].includes('Other Key') || r[0].includes('Other Businesses')) {
-      if (curSecRows.length) rovSections.push({ name: curSecName, rows: curSecRows });
-      curSecName = r[0]; curSecRows = [];
-    } else if (r.length >= 2) {
-      curSecRows.push(r);
-    }
+    if (/core business/i.test(r[0])) { inCore = true; inOther = false; continue; }
+    if (/other.*business|other.*key/i.test(r[0])) { inOther = true; inCore = false; continue; }
+    if (inCore && r.length >= 2) coreBizRows.push(r);
+    if (inOther && r.length >= 2) otherBizRows.push(r);
   }
-  if (curSecRows.length) rovSections.push({ name: curSecName, rows: curSecRows });
+  const coreTotal = coreBizRows.find(r => /total/i.test(r[0]));
+  const coreLast = coreBizRows.find(r => /supermarket|sm/i.test(r[0]));
+  const restLast = coreBizRows.find(r => /restaurant|3f/i.test(r[0]));
+  const coreHeadline = (coreLast && restLast)
+    ? `Core Business: Supermarket ${fmtBig(coreLast[coreLast.length-1])}, Restaurant ${fmtBig(restLast[restLast.length-1])}`
+    : 'Core Business Revenue';
 
-  const s2 = rovMonths.length ? `
-  <div class="er-section">
-    <h2 class="er-section-title">💼 Revenue Overview — by Business Unit (₦ Million)</h2>
-    <div class="er-table-wrap">
-      <table class="er-table">
-        <thead><tr><th>Business Line</th>${rovMonths.map(m => `<th class="er-num">${esc(m)}</th>`).join('')}</tr></thead>
-        <tbody>
-          ${rovSections.map(sec => `
-            <tr class="er-sec-row"><td colspan="${rovMonths.length+1}">${esc(sec.name)}</td></tr>
-            ${sec.rows.map(r => `<tr class="${r[0]==='Total'||r[0]==='TOTAL'?'er-tot':''}">
-              <td>${esc(r[0])}</td>
-              ${rovMonths.map((_,i) => `<td class="er-num">${fmtM(r[i+1])}</td>`).join('')}
-            </tr>`).join('')}`).join('')}
-        </tbody>
-      </table>
+  const coreSlide = rovCols.length ? `
+  <div class="er-slide">
+    ${slideTitle(coreHeadline)}
+    <div class="er-two-col">
+      <div>
+        <div class="er-subsection-label">CORE BUSINESS (Million)</div>
+        <div class="er-table-wrap"><table class="er-table">
+          <thead><tr><th>Business</th>${rovCols.map(c=>`<th class="er-num">${esc(c)}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${coreBizRows.map(r=>`<tr class="${/total/i.test(r[0])?'er-tot':''}">
+              <td>${esc(r[0])}</td>${rovCols.map((_,i)=>`<td class="er-num">${r[i+1]||'—'}</td>`).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+      ${otherBizRows.length ? `<div>
+        <div class="er-subsection-label er-orange">OTHER BUSINESSES (Million)</div>
+        <div class="er-table-wrap"><table class="er-table er-table--orange-hdr">
+          <thead><tr><th>Business</th>${rovCols.slice(-2).map(c=>`<th class="er-num">${esc(c)}</th>`).join('')}<th class="er-num">Change</th></tr></thead>
+          <tbody>
+            ${otherBizRows.filter(r=>!/total/i.test(r[0])).map(r=>{
+              const prev=pN(r[r.length-2]), curr=pN(r[r.length-1]);
+              const chg = (prev&&curr) ? ((curr-prev)/prev*100) : null;
+              const chgHtml = chg!==null ? `<span style="color:${chg>=0?'#15803d':'#dc2626'};font-weight:700">${chg>=0?'+':''}${chg.toFixed(1)}%</span>` : '—';
+              return `<tr><td>${esc(r[0])}</td>
+                <td class="er-num">${r[r.length-2]||'—'}</td>
+                <td class="er-num">${r[r.length-1]||'—'}</td>
+                <td class="er-num">${chgHtml}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table></div>
+      </div>` : ''}
     </div>
+    ${coreTotal ? insightBox(`<strong>Total Revenue: ${fmtBig(coreTotal[coreTotal.length-1])}</strong> | Supermarket and Restaurant are the core drivers`) : ''}
   </div>` : '';
 
-  // ── 3. Revenue & Growth ──────────────────────────────────────────────────
-  const rg     = data.revenueGrowth || [];
-  const rgData = rg.filter(r => r?.[0] && r[0] !== 'MONTH' && !r[0].includes('PERIOD') && !r[0].includes('GROWTH') && r.length >= 3);
+  // ── GROWTH tab ────────────────────────────────────────────────────────────
+  const rg = data.revenueGrowth || [];
+  const rgRows = rg.filter(r => r?.[0] && !/month|period|growth|header/i.test(r[0]) && r.length >= 4);
+  const latestRg = rgRows[rgRows.length-2] || rgRows[0];
+  const ytdRg = rgRows.find(r => /ytd/i.test(r[0]));
+  const sameStoreRg = rgRows.find(r => /same.store|ytd/i.test(r[0]));
 
-  const s3 = rgData.length ? `
-  <div class="er-section">
-    <h2 class="er-section-title">📈 Year-on-Year Growth</h2>
-    <div class="er-table-wrap">
-      <table class="er-table">
-        <thead><tr>
-          <th>Period</th><th class="er-num">2026 (M)</th><th class="er-num">2025 (M)</th>
-          <th class="er-num">Value YOY%</th><th class="er-num">Vol YOY%</th><th class="er-num">Same Store%</th>
-        </tr></thead>
-        <tbody>
-          ${rgData.map(r => `<tr class="${r[0].includes('YTD')?'er-tot':''}">
-            <td>${esc(r[0])}</td>
-            <td class="er-num">${fmtM(r[1])}</td><td class="er-num">${fmtM(r[2])}</td>
-            <td class="er-num">${yoyBadge(r[3])}</td><td class="er-num">${yoyBadge(r[4])}</td>
-            <td class="er-num">${yoyBadge(r[5])}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
+  const growthSlide = rgRows.length ? `
+  <div class="er-slide">
+    ${slideTitle(latestRg ? `${esc(latestRg[0])} Growth: Value ${latestRg[3]||''} YoY as Volume ${latestRg[4]||''} YoY` : 'Revenue & Growth')}
+    <div class="er-kpi-row">
+      ${latestRg ? kpiCard(`${esc(latestRg[0])} VALUE YoY`, yoySpan(latestRg[3]), '', '#d97706', '#fff7ed') : ''}
+      ${latestRg ? kpiCard(`${esc(latestRg[0])} VOLUME YoY`, yoySpan(latestRg[4]), '', '#d97706', '#fff7ed') : ''}
+      ${ytdRg ? kpiCard('BIZ YTD GROWTH', yoySpan(ytdRg[3]), '', '#d97706', '#fff7ed') : ''}
+      ${sameStoreRg ? kpiCard('SAME STORE YTD', yoySpan(sameStoreRg[5]||sameStoreRg[3]), '', '#d97706', '#fff7ed') : ''}
     </div>
+    <div class="er-table-wrap" style="margin-top:20px"><table class="er-table">
+      <thead><tr><th>Period</th><th class="er-num">Value (M)</th><th class="er-num">Prev Year (M)</th><th class="er-num">Val YoY%</th><th class="er-num">Vol YoY%</th><th class="er-num">Same Store%</th></tr></thead>
+      <tbody>
+        ${rgRows.map(r=>`<tr class="${/ytd/i.test(r[0])?'er-tot':''}">
+          <td>${esc(r[0])}</td>
+          <td class="er-num">${fmtM(r[1])}</td><td class="er-num">${fmtM(r[2])}</td>
+          <td class="er-num">${yoySpan(r[3])}</td><td class="er-num">${yoySpan(r[4])}</td>
+          <td class="er-num">${yoySpan(r[5])}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
   </div>` : '';
 
-  // ── 4. Regional Performance ──────────────────────────────────────────────
-  const regions = (data.regionPerf || []).filter(r => r?.[0] && r[0] !== 'REGION' && !r[0].includes('JUNE') && !r[0].includes('PERFORMANCE'));
+  // ── OUTLETS tab ───────────────────────────────────────────────────────────
+  const allOutlets = (data.outletsPerf||[]).filter(r=>r?.[0]&&r[0]!=='OUTLET');
+  const globalRow  = allOutlets.find(r=>/global/i.test(r[0]));
+  const outletRows = allOutlets.filter(r=>!/global/i.test(r[0]));
+  const globalAch  = pN(globalRow?.[5]??globalRow?.[4]);
+  const topPerformers = outletRows.filter(r=>pN(r[5])>=95).slice(0,3);
 
-  const s4 = regions.length ? `
-  <div class="er-section">
-    <h2 class="er-section-title">🗺 Regional Performance</h2>
-    <div class="er-region-grid">
-      ${regions.map(r => {
-        const pv   = pN(r[5]) ?? pN(r[4]) ?? 0;
-        const col  = pv >= 90 ? '#15803d' : pv >= 75 ? '#b45309' : '#c2410c';
-        const bgcl = pv >= 90 ? 'er-rc--green' : pv >= 75 ? 'er-rc--amber' : 'er-rc--red';
-        return `<div class="er-region-card ${bgcl}">
-          <div class="er-rc-name">${esc(r[0]||r[1])}</div>
-          <div class="er-rc-pct" style="color:${col}">${pv}%</div>
-          <div class="er-rc-detail">${fmtBig(r[2])} actual</div>
-          <div class="er-rc-detail er-muted">of ${fmtBig(r[3])} target</div>
+  const outletSlide = outletRows.length ? `
+  <div class="er-slide">
+    ${slideTitle(`Outlet Performance: ${globalAch ? globalAch.toFixed(1)+'% of Target Achieved' : 'Monthly Overview'}`)}
+    <div class="er-outlet-header">
+      ${globalRow ? `<div class="er-global-achievement">
+        <div class="er-ga-label">GLOBAL ACHIEVEMENT</div>
+        <div class="er-ga-pct" style="color:${globalAch>=90?'#15803d':globalAch>=80?'#d97706':'#dc2626'}">${globalAch?.toFixed(1)}%</div>
+        <div class="er-ga-sub">Target: ${fmtBig(globalRow[1])} | Actual: ${fmtBig(globalRow[2])}</div>
+      </div>` : ''}
+      ${topPerformers.length ? `<div class="er-top-performers">
+        <div class="er-subsection-label">TOP PERFORMERS</div>
+        <div class="er-top-perf-row">
+          ${topPerformers.map(r=>`<div class="er-top-perf-chip">${esc(r[0])} <strong>${r[5]}</strong></div>`).join('')}
+        </div>
+      </div>` : ''}
+    </div>
+    <div class="er-table-wrap"><table class="er-table">
+      <thead><tr><th>OUTLET</th><th class="er-num">TARGET</th><th class="er-num">ACTUAL</th><th class="er-num">DIFFERENCE</th><th class="er-num">ACH %</th><th>STATUS</th><th class="er-num">YTD SALES</th></tr></thead>
+      <tbody>
+        ${[...(globalRow?[globalRow]:[]), ...outletRows].map(r=>{
+          const diff=pN(r[3]??r[4]); const isGlobal=/global/i.test(r[0]);
+          return `<tr class="${isGlobal?'er-tot':''}">
+            <td style="font-weight:${isGlobal?700:400}">${esc(r[0])}</td>
+            <td class="er-num">${fmtBig(r[1])}</td><td class="er-num">${fmtBig(r[2])}</td>
+            <td class="er-num" style="color:${diff!==null?(diff>=0?'#15803d':'#dc2626'):''}">${fmtBig(r[3]??r[4])}</td>
+            <td class="er-num">${pctSpan(r[5])}</td>
+            <td>${statusBadge(r[5])}</td>
+            <td class="er-num">${fmtBig(r[6]??r[5])}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>
+  </div>` : '';
+
+  // Regional
+  const regions = (data.regionPerf||[]).filter(r=>r?.[0]&&!/region|june|performance/i.test(r[0]));
+  const regionYTD = (data.regionPerf||[]).filter(r=>r?.[0]&&!/region|june|performance/i.test(r[0]));
+  const regionSlide = regions.length ? `
+  <div class="er-slide">
+    ${slideTitle('Regional Performance')}
+    <div class="er-region-cards">
+      ${regions.map(r=>{
+        const pv=pN(r[5]??r[4]); const col=pv>=90?'#15803d':pv>=80?'#d97706':'#dc2626';
+        const bg=pv>=90?'#f0fdf4':pv>=80?'#fff7ed':'#fff1f2';
+        return `<div class="er-region-card" style="border-left:4px solid ${col};background:${bg}">
+          <div class="er-rc-name" style="color:${col}">${esc(r[0])}</div>
+          <div class="er-rc-pct" style="color:${col}">${pv?.toFixed(0)}%</div>
+          <div class="er-rc-detail">Target: ${fmtBig(r[1]??r[2])}</div>
+          <div class="er-rc-detail">Actual: ${fmtBig(r[2]??r[3])}</div>
+          <div class="er-rc-detail" style="color:#dc2626">Shortfall: ${fmtBig(r[3]??r[4])}</div>
         </div>`;
       }).join('')}
     </div>
   </div>` : '';
 
-  // ── 5. Outlet Performance ────────────────────────────────────────────────
-  const allOutlets  = (data.outletsPerf || []).filter(r => r?.[0] && r[0] !== 'OUTLET');
-  const globalRow   = allOutlets.find(r => r[0].toUpperCase() === 'GLOBAL');
-  const outletRows  = allOutlets.filter(r => r[0].toUpperCase() !== 'GLOBAL')
-                       .sort((a,b) => (pN(b[5])||0) - (pN(a[5])||0));
-
-  const s5 = outletRows.length ? `
-  <div class="er-section">
-    <h2 class="er-section-title">🏪 Outlet Performance (Latest Month)</h2>
-    ${globalRow ? `<div class="er-global-bar">
-      <span><strong>GLOBAL TOTAL</strong></span>
-      <span>Actual: <strong>${fmtBig(globalRow[2])}</strong></span>
-      <span>Target: <strong>${fmtBig(globalRow[1])}</strong></span>
-      <span>Achievement: ${pctBadge(globalRow[5])}</span>
-    </div>` : ''}
-    <div class="er-table-wrap">
-      <table class="er-table">
-        <thead><tr>
-          <th>Outlet</th><th class="er-num">Target</th>
-          <th class="er-num">Actual Sales</th><th class="er-num">Variance</th><th class="er-num">Achievement</th>
-        </tr></thead>
-        <tbody>
-          ${outletRows.map(r => {
-            const diff = pN(r[4]);
-            const diffCol = diff !== null ? (diff >= 0 ? '#15803d' : '#c2410c') : '';
-            return `<tr>
-              <td>${esc(r[0])}</td>
-              <td class="er-num">${fmtBig(r[1])}</td>
-              <td class="er-num">${fmtBig(r[2])}</td>
-              <td class="er-num" style="color:${diffCol}">${fmtBig(r[4])}</td>
-              <td class="er-num">${pctBadge(r[5])}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-  </div>` : '';
-
-  // ── 6. Area Performance ──────────────────────────────────────────────────
+  // Area Leaders
   const areaRaw = data.areaPerf || [];
-  const areaData = areaRaw.filter(r => r?.[1] && r[1] !== 'OUTLET' && !r[1].includes('AREA') && !r[1].includes('PERFORMANCE'));
-  let lastLeader = '';
-  const areaRows = areaData.map(r => {
-    if (r[0]) lastLeader = r[0];
-    return { leader: lastLeader, outlet: r[1], june: r[2], sales: r[3], diff: r[4], pct: r[5] };
-  });
-
-  const s6 = areaRows.length ? `
-  <div class="er-section">
-    <h2 class="er-section-title">👥 Area Coach Performance</h2>
-    <div class="er-table-wrap">
-      <table class="er-table">
-        <thead><tr>
-          <th>Area Leader</th><th>Outlet</th>
-          <th class="er-num">Target</th><th class="er-num">Sales</th>
-          <th class="er-num">Variance</th><th class="er-num">%</th>
-        </tr></thead>
-        <tbody>
-          ${areaRows.map(r => {
-            const isTotal = r.outlet?.toUpperCase() === 'TOTAL';
-            const diff = pN(r.diff);
-            return `<tr class="${isTotal?'er-tot':''}">
-              <td>${isTotal?'':esc(r.leader)}</td>
-              <td>${esc(r.outlet)}</td>
-              <td class="er-num">${fmtBig(r.june)}</td>
-              <td class="er-num">${fmtBig(r.sales)}</td>
-              <td class="er-num" style="color:${diff!==null?(diff>=0?'#15803d':'#c2410c'):''}">${fmtBig(r.diff)}</td>
-              <td class="er-num">${pctBadge(r.pct)}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
+  const areaHdr = areaRaw.find(r=>/leader|area/i.test(r[0]));
+  const areaRows2 = areaRaw.filter(r=>r?.[0]&&!/leader|area|outlet|performance/i.test(r[0])&&r.length>=4);
+  const areaSlide = areaRows2.length ? `
+  <div class="er-slide">
+    ${slideTitle('Area Leaders Performance')}
+    <div class="er-table-wrap"><table class="er-table">
+      <thead><tr><th>LEADER</th><th>OUTLETS</th><th class="er-num">TARGET</th><th class="er-num">ACTUAL</th><th class="er-num">ACH %</th><th>STATUS</th></tr></thead>
+      <tbody>
+        ${areaRows2.map(r=>`<tr>
+          <td style="font-weight:600">${esc(r[0])}</td><td style="font-size:0.82rem;color:#4b5563">${esc(r[1]||'')}</td>
+          <td class="er-num">${fmtBig(r[2])}</td><td class="er-num">${fmtBig(r[3])}</td>
+          <td class="er-num">${pctSpan(r[4])}</td><td>${statusBadge(r[4])}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
   </div>` : '';
 
-  // ── 7. Category Performance ──────────────────────────────────────────────
-  const catRaw  = data.categorySalesLatest || [];
-  const catHdr  = catRaw.find(r => r?.[0] === 'DEPT');
-  const catRows = catRaw.filter(r => r?.[0] && r[0] !== 'DEPT' && !r[0].includes('CATEGORY') && !r[0].includes('PERFORMANCE'));
-
-  const s7 = catRows.length ? `
-  <div class="er-section">
-    <h2 class="er-section-title">🛒 Category Performance (Latest Month)</h2>
-    <div class="er-table-wrap">
-      <table class="er-table">
-        <thead><tr>
-          <th>Department</th>
-          <th class="er-num">${catHdr?.[1] ? esc(catHdr[1]) : 'Target'}</th>
-          <th class="er-num">${catHdr?.[2] ? esc(catHdr[2]) : 'Sales'}</th>
-          <th class="er-num">Difference</th><th class="er-num">Achievement%</th>
-        </tr></thead>
-        <tbody>
-          ${catRows.map(r => {
-            const diff = pN(r[3]);
-            return `<tr class="${r[0]==='TOTAL'?'er-tot':''}">
-              <td>${esc(r[0])}</td>
-              <td class="er-num">${fmtM(r[1])}</td>
-              <td class="er-num">${fmtM(r[2])}</td>
-              <td class="er-num" style="color:${diff!==null?(diff>=0?'#15803d':'#c2410c'):''}">${fmtM(r[3])}</td>
-              <td class="er-num">${pctBadge(r[4])}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
+  // Top Stores
+  const ts = data.topStores || [];
+  const tsHdr = ts.find(r=>r?.some(c=>/rank|store|#/i.test(String(c))));
+  const tsCols = tsHdr ? tsHdr.filter(Boolean) : [];
+  const tsRows = ts.filter(r=>r?.[0]&&!/rank|store|top/i.test(r[0])&&r.length>=3);
+  const topStoresSlide = tsRows.length ? `
+  <div class="er-slide">
+    ${slideTitle('Top Revenue Stores')}
+    <div class="er-table-wrap"><table class="er-table">
+      <thead><tr>${tsCols.length ? tsCols.map(c=>`<th>${esc(c)}</th>`).join('') : '<th>Rank</th><th>Store</th><th class="er-num">Sales</th>'}</tr></thead>
+      <tbody>
+        ${tsRows.map(r=>`<tr class="${/total/i.test(String(r[0]))?'er-tot':''}">
+          ${r.map((c,i)=>`<td class="${i>0?'er-num':''}">${c||'—'}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
   </div>` : '';
 
-  // ── 8. Weekly Sales ──────────────────────────────────────────────────────
-  const ws = data.weeklySales || [];
-  const wsWeeks   = ws.find(r => r?.some(c => String(c).includes('Week')));
-  const wsDates   = ws.find(r => r?.some(c => String(c).match(/\d+(ST|TH|ND|RD)/i)));
-  const wsSales   = ws.find(r => r?.[0]?.includes('Sales'));
-  const wsDaily   = ws.find(r => r?.[0]?.includes('Daily'));
-  const weekLabels = wsWeeks ? wsWeeks.filter(Boolean).slice(1) : [];
+  // ── CATEGORY tab ──────────────────────────────────────────────────────────
+  const catYTD = data.categorySalesYTD || [];
+  const catYTDHdr = catYTD.find(r=>r?.slice(1).some(c=>/jan|feb|mar/i.test(String(c))));
+  const catYTDCols = catYTDHdr ? catYTDHdr.slice(1).filter(Boolean) : [];
+  const catYTDRows = catYTD.filter(r=>r?.[0]&&!/dept|category|sales/i.test(r[0])&&r.length>=2);
+  const catTotalRow = catYTDRows.find(r=>/total/i.test(r[0]));
 
-  let wsDiamondRows = [], wsSilverRows = [], inDia = false, inSil = false;
-  for (const r of ws) {
-    if (!r?.[0]) continue;
-    if (r[0].includes('Diamond')) { inDia = true; inSil = false; continue; }
-    if (r[0].includes('Silver'))  { inSil = true; inDia = false; continue; }
-    if (inDia) wsDiamondRows.push(r);
-    if (inSil) wsSilverRows.push(r);
-  }
-
-  const s8 = wsSales ? `
-  <div class="er-section">
-    <h2 class="er-section-title">📅 Weekly Sales Performance</h2>
-    <div class="er-table-wrap">
-      <table class="er-table">
-        <thead>
-          <tr><th></th>${weekLabels.map(w => `<th class="er-num">${esc(w)}</th>`).join('')}</tr>
-          ${wsDates ? `<tr class="er-date-row"><th></th>${wsDates.filter(Boolean).slice(1).map(d => `<th class="er-num er-muted" style="font-size:0.7rem">${esc(d)}</th>`).join('')}</tr>` : ''}
-        </thead>
+  const catYTDSlide = catYTDRows.length ? `
+  <div class="er-slide">
+    ${slideTitle('Category Sales YTD')}
+    <div class="er-two-col">
+      <div class="er-table-wrap" style="flex:2"><table class="er-table">
+        <thead><tr><th>DEPARTMENT</th>${catYTDCols.map(c=>`<th class="er-num">${esc(c)}</th>`).join('')}</tr></thead>
         <tbody>
-          <tr class="er-tot"><td>Sales (₦M)</td>${wsSales.slice(1).map(v => `<td class="er-num">${v||'—'}</td>`).join('')}</tr>
-          ${wsDaily ? `<tr><td>Daily Avg (₦M)</td>${wsDaily.slice(1).map(v => `<td class="er-num">${v||'—'}</td>`).join('')}</tr>` : ''}
-          ${wsDiamondRows.length ? `<tr class="er-sec-row"><td colspan="${weekLabels.length+1}">Diamond Lines — Stock Availability %</td></tr>
-            ${wsDiamondRows.map(r => `<tr><td style="padding-left:1.5rem">${esc(r[0])}</td>${r.slice(1).map(v=>`<td class="er-num">${v||'—'}</td>`).join('')}</tr>`).join('')}` : ''}
-          ${wsSilverRows.length ? `<tr class="er-sec-row"><td colspan="${weekLabels.length+1}">Silver Lines — Stock Availability %</td></tr>
-            ${wsSilverRows.map(r => `<tr><td style="padding-left:1.5rem">${esc(r[0])}</td>${r.slice(1).map(v=>`<td class="er-num">${v||'—'}</td>`).join('')}</tr>`).join('')}` : ''}
-        </tbody>
-      </table>
-    </div>
-  </div>` : '';
-
-  // ── 9. Utility & Power ───────────────────────────────────────────────────
-  const util = (data.utility || []).filter(r => r?.[0] && r[0] !== 'Description');
-  const s9 = util.length ? `
-  <div class="er-section">
-    <h2 class="er-section-title">⚡ Utility & Power Cost</h2>
-    <div class="er-table-wrap">
-      <table class="er-table">
-        <thead><tr><th>Description</th><th class="er-num">Previous Month</th><th class="er-num">Latest Month</th></tr></thead>
-        <tbody>
-          ${util.map(r => `<tr>
-            <td>${esc(r[0])}</td>
-            <td class="er-num">${fmtM(r[1]) !== '—' ? fmtM(r[1]) : (r[1]||'—')}</td>
-            <td class="er-num">${fmtM(r[2]) !== '—' ? fmtM(r[2]) : (r[2]||'—')}</td>
+          ${catYTDRows.map(r=>`<tr class="${/total/i.test(r[0])?'er-tot':''}">
+            <td>${esc(r[0])}</td>${catYTDCols.map((_,i)=>`<td class="er-num">${r[i+1]||'—'}</td>`).join('')}
           </tr>`).join('')}
         </tbody>
-      </table>
+      </table></div>
+      <div>
+        <div class="er-kpi-mini-grid">
+          ${catYTDRows.filter(r=>!/total/i.test(r[0])).slice(0,4).map(r=>
+            kpiCard(esc(r[0]), fmtBig(r[r.length-1]), 'YTD', '#15803d', '#f0fdf4')
+          ).join('')}
+        </div>
+      </div>
     </div>
   </div>` : '';
 
-  // ── Assemble ─────────────────────────────────────────────────────────────
-  const now = new Date().toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' });
-  const latestLabel = latestM ? latestM[0] : '';
+  const catLatest = data.categorySalesLatest || [];
+  const catLatHdr = catLatest.find(r=>/dept|category/i.test(r[0]));
+  const catLatCols = catLatHdr ? catLatHdr.slice(1).filter(Boolean) : [];
+  const catLatRows = catLatest.filter(r=>r?.[0]&&!/dept|category/i.test(r[0])&&r.length>=3);
 
+  const catLatSlide = catLatRows.length ? `
+  <div class="er-slide">
+    ${slideTitle('June Category Performance vs May')}
+    <div class="er-two-col">
+      <div class="er-table-wrap" style="flex:1.5">
+        <div class="er-subsection-label er-orange">JUNE vs MAY ACHIEVEMENT %</div>
+        <table class="er-table er-table--orange-hdr">
+          <thead><tr><th>DEPT</th>${catLatCols.map(c=>`<th class="er-num">${esc(c)}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${catLatRows.map(r=>`<tr class="${/total|global/i.test(r[0])?'er-tot':''}">
+              <td>${esc(r[0])}</td>${catLatCols.map((_,i)=>{
+                const v=r[i+1]; const n=pN(v);
+                const isAch = catLatCols[i]?.includes('%');
+                return `<td class="er-num">${isAch ? pctSpan(v) : (v||'—')}</td>`;
+              }).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    ${insightBox('Key Concern: Review departments with declining achievement vs previous month', 'red')}
+  </div>` : '';
+
+  // ── COMPARISON tab ────────────────────────────────────────────────────────
+  const yoy = data.yoy || [];
+  const yoyHdr = yoy.find(r=>r?.some(c=>/outlet|store/i.test(String(c))));
+  const yoyCols = yoyHdr ? yoyHdr.filter(Boolean) : [];
+  const yoyRows = yoy.filter(r=>r?.[0]&&!/outlet|store|header/i.test(r[0])&&r.length>=4);
+  const yoyGrowers = yoyRows.filter(r=>pN(r[r.length-1])>=0).sort((a,b)=>(pN(b[b.length-1])||0)-(pN(a[a.length-1])||0));
+  const yoyDecliners = yoyRows.filter(r=>pN(r[r.length-1])<0).sort((a,b)=>(pN(a[a.length-1])||0)-(pN(b[b.length-1])||0));
+
+  const yoySlide = yoyRows.length ? `
+  <div class="er-slide">
+    ${slideTitle('Outlet Year-on-Year Comparison')}
+    <div class="er-two-col">
+      <div>
+        <div class="er-subsection-label">TOP GROWERS (Value %)</div>
+        <div class="er-table-wrap"><table class="er-table">
+          <thead><tr><th>OUTLET</th><th class="er-num">2025 QTY</th><th class="er-num">2026 QTY</th><th class="er-num">2025 VAL</th><th class="er-num">2026 VAL</th><th class="er-num">VAL %</th></tr></thead>
+          <tbody>
+            ${yoyGrowers.slice(0,6).map(r=>`<tr>
+              <td>${esc(r[0])}</td>
+              ${r.slice(1,6).map((v,i)=>`<td class="er-num">${i===4?yoySpan(v):(v||'—')}</td>`).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+      <div>
+        <div class="er-subsection-label er-orange">DECLINERS (Value %)</div>
+        <div class="er-table-wrap"><table class="er-table er-table--orange-hdr">
+          <thead><tr><th>OUTLET</th><th class="er-num">2025 QTY</th><th class="er-num">2026 QTY</th><th class="er-num">2025 VAL</th><th class="er-num">2026 VAL</th><th class="er-num">VAL %</th></tr></thead>
+          <tbody>
+            ${yoyDecliners.slice(0,6).map(r=>`<tr>
+              <td>${esc(r[0])}</td>
+              ${r.slice(1,6).map((v,i)=>`<td class="er-num">${i===4?yoySpan(v):(v||'—')}</td>`).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>` : '';
+
+  // Utilities
+  const util = (data.utility||[]).filter(r=>r?.[0]&&!/desc|header/i.test(r[0]));
+  const utilKpis = util.slice(0,4);
+  const utilSlide = util.length ? `
+  <div class="er-slide">
+    ${slideTitle('Utilities & Power Cost')}
+    <div class="er-kpi-row">
+      ${utilKpis.map(r=>kpiCard(esc(r[0]), String(r[r.length-1]||'—'), '', '#d97706', '#fff7ed')).join('')}
+    </div>
+    <div class="er-table-wrap" style="margin-top:20px"><table class="er-table">
+      <thead><tr><th>Description</th><th class="er-num">Previous</th><th class="er-num">Latest</th><th class="er-num">Change</th></tr></thead>
+      <tbody>
+        ${util.map(r=>{
+          const prev=pN(r[r.length-2]), curr=pN(r[r.length-1]);
+          const chg = prev&&curr ? ((curr-prev)/prev*100) : null;
+          return `<tr>
+            <td>${esc(r[0])}</td>
+            <td class="er-num">${r[r.length-2]||'—'}</td>
+            <td class="er-num">${r[r.length-1]||'—'}</td>
+            <td class="er-num">${chg!==null?yoySpan(chg):'—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>
+  </div>` : '';
+
+  // Weekly Sales
+  const ws = data.weeklySales || [];
+  const wsWeeks = ws.find(r=>r?.some(c=>String(c).includes('Week')));
+  const wsSales = ws.find(r=>/sales/i.test(r?.[0]));
+  const wsDaily = ws.find(r=>/daily/i.test(r?.[0]));
+  const weekLabels = wsWeeks ? wsWeeks.filter(Boolean).slice(1) : [];
+  const weeklySlide = wsSales ? `
+  <div class="er-slide">
+    ${slideTitle('Weekly Sales Performance')}
+    <div class="er-table-wrap"><table class="er-table">
+      <thead><tr><th></th>${weekLabels.map(w=>`<th class="er-num">${esc(w)}</th>`).join('')}</tr></thead>
+      <tbody>
+        <tr class="er-tot"><td>Sales (N Million)</td>${wsSales.slice(1).map(v=>`<td class="er-num">${v||'—'}</td>`).join('')}</tr>
+        ${wsDaily?`<tr><td>Daily Average</td>${wsDaily.slice(1).map(v=>`<td class="er-num">${v||'—'}</td>`).join('')}</tr>`:''}
+      </tbody>
+    </table></div>
+  </div>` : '';
+
+  // ── ASSEMBLE TABBED LAYOUT ────────────────────────────────────────────────
   return `
   <div class="exec-report" id="execReportDoc">
     <div class="er-header">
       <div class="er-header-left">
-        <img src="/foodco-logo.png" alt="Foodco" style="height:44px;object-fit:contain;" />
+        <img src="/foodco-logo.png" alt="FoodCo" style="height:40px;object-fit:contain" />
         <div>
           <div class="er-title">Foodco Nigeria Limited</div>
-          <div class="er-subtitle">Executive Business Report${latestLabel ? ' — ' + latestLabel : ''}</div>
+          <div class="er-subtitle">Executive Sales Report${latestLabel ? ' — ' + latestLabel : ''}</div>
         </div>
       </div>
       <div class="er-header-right">
         <div class="er-gen-date">Generated: ${now}</div>
-        <button class="btn-ghost" onclick="window.print()" style="margin-top:6px;font-size:0.8rem;">🖨 Print</button>
+        <button class="btn-ghost" onclick="window.print()" style="font-size:0.78rem;margin-top:4px;">🖨 Print</button>
       </div>
     </div>
-    ${s1}${s2}${s3}${s4}${s5}${s6}${s7}${s8}${s9}
-  </div>`;
+
+    <div class="er-tab-nav" id="erTabNav">
+      <button class="er-tab active" onclick="erSwitchTab('revenue',this)">REVENUE</button>
+      <button class="er-tab" onclick="erSwitchTab('growth',this)">GROWTH</button>
+      <button class="er-tab" onclick="erSwitchTab('outlets',this)">OUTLETS</button>
+      <button class="er-tab" onclick="erSwitchTab('category',this)">CATEGORY</button>
+      <button class="er-tab" onclick="erSwitchTab('comparison',this)">COMPARISON</button>
+    </div>
+
+    <div class="er-tab-panel active" id="er-panel-revenue">
+      ${execOverview}
+      ${coreSlide}
+    </div>
+    <div class="er-tab-panel" id="er-panel-growth">
+      ${growthSlide}
+    </div>
+    <div class="er-tab-panel" id="er-panel-outlets">
+      ${outletSlide}
+      ${regionSlide}
+      ${areaSlide}
+      ${topStoresSlide}
+    </div>
+    <div class="er-tab-panel" id="er-panel-category">
+      ${catYTDSlide}
+      ${catLatSlide}
+      ${weeklySlide}
+    </div>
+    <div class="er-tab-panel" id="er-panel-comparison">
+      ${yoySlide}
+      ${utilSlide}
+    </div>
+  </div>
+  <script>
+    function erSwitchTab(id, btn) {
+      document.querySelectorAll('.er-tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.er-tab').forEach(b => b.classList.remove('active'));
+      document.getElementById('er-panel-' + id)?.classList.add('active');
+      btn.classList.add('active');
+    }
+  </script>`;
 }
 
