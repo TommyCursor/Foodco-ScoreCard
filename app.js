@@ -2773,6 +2773,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         errEl.classList.remove('hidden');
         return;
       }
+      window._lastReportData = data;
       out.innerHTML = renderExecReport(data);
     } catch (e) {
       errEl.textContent = e.message || 'Network error — please try again.';
@@ -3074,6 +3075,464 @@ function useAISuggestion(el) {
 }
 
 // ── Executive Report Renderer ─────────────────────────────────────────────
+
+// ── PPTX Download ─────────────────────────────────────────────────────────────
+window.downloadAsPptx = async function() {
+  const reportData = window._lastReportData;
+  if (!reportData) { alert('Please generate the report first.'); return; }
+
+  const btn = document.getElementById('dlPptxBtn');
+  if (btn) { btn.textContent = '⏳ Building…'; btn.disabled = true; }
+
+  try {
+    if (typeof PptxGenJS === 'undefined') {
+      await new Promise((res, rej) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+        sc.onload = res; sc.onerror = rej;
+        document.head.appendChild(sc);
+      });
+    }
+
+    const pptx = new PptxGenJS();
+    pptx.layout = 'LAYOUT_WIDE';
+    pptx.author = 'FoodCo HSO'; pptx.company = 'FoodCo Nigeria Limited';
+
+    const C = { green:'166534', mgreen:'15803d', orange:'ea580c', lgreenBg:'F0FDF4',
+                 lorangeBg:'FFF7ED', white:'FFFFFF', gray:'6B7280', dkgray:'374151',
+                 great:'166534', stable:'15803d', weak:'D97706', concern:'DC2626',
+                 greatBg:'DCFCE7', weakBg:'FEF3C7', concernBg:'FEE2E2' };
+    const W = 13.33, H = 7.5;
+
+    function _pN(v) {
+      if (v == null || v === '') return null;
+      const n = parseFloat(String(v).replace(/[,\s₦NB]/g,'').replace(/%$/,''));
+      return isNaN(n) ? null : n;
+    }
+    function _normPct(v) { const n=_pN(v); return n===null?null:(n<2?n*100:n); }
+    function _fmtRaw(v) {
+      const n=_pN(v); if(n===null) return '—';
+      const abs=Math.abs(n), s=n<0?'-':'';
+      if(abs>=1e9) return `${s}N${(abs/1e9).toFixed(2)}B`;
+      if(abs>=1e6) return `${s}N${(abs/1e6).toFixed(1)}M`;
+      if(abs>=1e3) return `${s}N${Math.round(abs).toLocaleString()}`;
+      return `${s}N${abs.toFixed(0)}`;
+    }
+    function _fmtBig(v) {
+      const n=_pN(v); if(n===null) return '—';
+      if(Math.abs(n)>=1000) return `N${(n/1000).toFixed(2)}B`;
+      return `N${n.toFixed(1)}M`;
+    }
+    function _statusColor(v) {
+      const n=_normPct(v);
+      if(n===null) return [C.gray,'F9FAFB'];
+      if(n>=100) return [C.great, C.greatBg];
+      if(n>=90)  return [C.stable, C.greatBg];
+      if(n>=80)  return [C.weak, C.weakBg];
+      return [C.concern, C.concernBg];
+    }
+    function _statusLabel(v) {
+      const n=_normPct(v); if(n===null) return '—';
+      return n>=100?'GREAT':n>=90?'STABLE':n>=80?'WEAK':'CONCERNING';
+    }
+    function _hdr(cols, bg=C.green) {
+      return cols.map(t=>({ text:String(t||''), options:{ bold:true,color:C.white,fill:{color:bg},align:'center',valign:'middle',fontSize:9,border:{pt:0.5,color:'FFFFFF'} } }));
+    }
+    function _cell(t, opts={}) { return { text:t==null?'—':String(t), options:{fontSize:9,valign:'middle',...opts} }; }
+    function _numCell(t, opts={}) { return _cell(t,{align:'right',...opts}); }
+    function _totRow(cols) { return cols.map((t,i)=>_cell(t==null?'—':String(t),{bold:true,align:i>0?'right':'left',fill:{color:C.greatBg}})); }
+
+    function addHeaderBar(slide, title, sub='') {
+      slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:0.85,fill:{color:C.green}});
+      slide.addShape(pptx.ShapeType.rect,{x:0,y:0.85,w:W,h:0.07,fill:{color:C.orange}});
+      slide.addText(title,{x:0.3,y:0.08,w:10,h:0.62,fontSize:19,bold:true,color:C.white,valign:'middle'});
+      if(sub) slide.addText(sub,{x:10.5,y:0.08,w:2.5,h:0.62,fontSize:11,color:'AADDB0',align:'right',valign:'middle'});
+    }
+    function sectionLabel(slide, text, x, y, w, orange=false) {
+      slide.addText(text,{x,y,w,h:0.35,fontSize:12,bold:true,color:orange?C.orange:C.green});
+      slide.addShape(pptx.ShapeType.rect,{x,y:y+0.33,w:0.45,h:0.04,fill:{color:C.orange}});
+    }
+    function kpiBox(slide, x, y, w, h, label, val, valColor, bg, borderColor) {
+      slide.addShape(pptx.ShapeType.rect,{x,y,w,h,fill:{color:bg},line:{color:borderColor,pt:1.5}});
+      slide.addText(label,{x:x+0.12,y:y+0.1,w:w-0.24,h:0.3,fontSize:9,color:C.gray,bold:true});
+      slide.addText(val,{x:x+0.12,y:y+0.42,w:w-0.24,h:h-0.6,fontSize:20,bold:true,color:valColor,align:'center',valign:'middle'});
+    }
+
+    // ── Parse data ───────────────────────────────────────────────────────────
+    const ytdAll   = (reportData.businessYTD||[]).filter(r=>r?.[0]);
+    const ytdMonths= ytdAll.filter(r=>!['MONTH','YTD','TOTAL'].includes((r[0]||'').toUpperCase()));
+    const ytdRowD  = ytdAll.find(r=>(r[0]||'').toUpperCase()==='YTD');
+    const latestM  = ytdMonths[ytdMonths.length-1];
+    const label    = (latestM?.[0]||'JUNE').toUpperCase();
+
+    const rov = reportData.revenueOverview||[];
+    const rovHdr = rov.find(r=>r?.slice(1).some(c=>/jan|feb|mar|apr|may|jun/i.test(String(c))));
+    const rovCols = rovHdr ? rovHdr.slice(1).filter(Boolean) : [];
+    let coreBizRows=[],otherBizRows=[],inCore=false,inOther=false;
+    for(const r of rov){
+      if(!r?.[0]) continue;
+      if(/core business/i.test(r[0])){inCore=true;inOther=false;continue;}
+      if(/other.*business|other.*key/i.test(r[0])){inOther=true;inCore=false;continue;}
+      if(inCore&&r.length>=2) coreBizRows.push(r);
+      if(inOther&&r.length>=2) otherBizRows.push(r);
+    }
+
+    const rg = reportData.revenueGrowth||[];
+    const rgRows = rg.filter(r=>r?.[0]&&!/month|period|growth|header/i.test(r[0])&&r.length>=4);
+    const latestRg = rgRows.filter(r=>!/ytd|same/i.test(r[0])).slice(-1)[0];
+    const ytdRg    = rgRows.find(r=>/biz ytd/i.test(r[0]));
+    const ssRg     = rgRows.find(r=>/same.store/i.test(r[0]));
+
+    const allOutlets = (reportData.outletsPerf||[]).filter(r=>r?.[0]&&r[0]!=='OUTLET');
+    const globalOutlet = allOutlets.find(r=>/global/i.test(r[0]));
+    const outletRows_d = allOutlets.filter(r=>!/global/i.test(r[0]));
+
+    const regions_d = (reportData.regionPerf||[]).filter(r=>r?.[0]&&!/region|june|performance/i.test(r[0]));
+
+    const areaRaw_d = reportData.areaPerf||[];
+    const areaGrouped_d = [];
+    for(const r of areaRaw_d){
+      if(!r?.[0]&&!r?.[1]) continue;
+      if(/^(area leader|leader|outlet|june 2026|performance)$/i.test((r[0]||'').trim())) continue;
+      if(!r[1]||r.length<4) continue;
+      areaGrouped_d.push({leader:r[0]||'',outlet:r[1],target:r[2],actual:r[3],diff:r[4],pct:r[5],isTotal:/total/i.test(r[1])});
+    }
+
+    const catYTD_d = reportData.categorySalesYTD||[];
+    const catYTDHdr_d = catYTD_d.find(r=>r?.slice(1).some(c=>/jan|feb|mar/i.test(String(c))));
+    const catYTDCols_d = catYTDHdr_d ? catYTDHdr_d.slice(1).filter(Boolean) : [];
+    const catYTDRows_d = catYTD_d.filter(r=>r?.[0]&&!/dept|category|sales/i.test(r[0])&&r.length>=2);
+
+    const catLat_d = reportData.categorySalesLatest||[];
+    const catLatHdr_d = catLat_d.find(r=>/dept|category/i.test(r[0]));
+    const catLatCols_d = catLatHdr_d ? catLatHdr_d.slice(1).filter(Boolean) : [];
+    const catLatRows_d = catLat_d.filter(r=>r?.[0]&&!/dept|category/i.test(r[0])&&r.length>=3);
+
+    const yoy_d = reportData.yoy||[];
+    const smIdx = yoy_d.findIndex(r=>r?.some(c=>/sm.*3f|sm\+3f/i.test(String(c))));
+    const yoySec = smIdx>=0 ? yoy_d.slice(smIdx) : yoy_d;
+    const yoyRows_d = yoySec.filter(r=>{
+      if(!r?.[0]) return false;
+      if(/outlet|store|total|same.store|supermarket|restaurant|sm\+3f/i.test(r[0])) return false;
+      return r.length>=6;
+    });
+    const yoyGrow = yoyRows_d.filter(r=>_pN(r[r.length-1])>=0).sort((a,b)=>(_pN(b[b.length-1])||0)-(_pN(a[a.length-1])||0));
+    const yoyDec  = yoyRows_d.filter(r=>_pN(r[r.length-1])<0).sort((a,b)=>(_pN(a[a.length-1])||0)-(_pN(b[b.length-1])||0));
+
+    const util_d = (reportData.utility||[]).filter(r=>r?.[0]&&!/desc|header/i.test(r[0]));
+
+    // ── SLIDE 1: Cover ────────────────────────────────────────────────────────
+    {
+      const s = pptx.addSlide();
+      s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:C.green}});
+      s.addShape(pptx.ShapeType.rect,{x:0,y:H*0.58,w:W,h:H*0.42,fill:{color:'0F4C28'}});
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:3.15,w:6.33,h:0.07,fill:{color:C.orange}});
+      s.addText(`${label} 2026`,{x:0.5,y:1.0,w:W-1,h:1.3,fontSize:52,bold:true,color:C.white,align:'center'});
+      s.addText('SALES REPORT',{x:0.5,y:2.1,w:W-1,h:0.85,fontSize:30,color:'AADDB0',align:'center',charSpacing:5});
+      s.addText('FoodCo Nigeria Limited',{x:0.5,y:3.35,w:W-1,h:0.6,fontSize:18,bold:true,color:C.white,align:'center'});
+      s.addText('Presented by Ayodele Adio  ·  Head of Sales Operations',{x:0.5,y:4.1,w:W-1,h:0.4,fontSize:12,color:'AADDB0',align:'center'});
+      s.addText(new Date().toLocaleDateString('en-NG',{day:'numeric',month:'long',year:'numeric'}),{x:0.5,y:4.65,w:W-1,h:0.35,fontSize:10,color:'77BB88',align:'center'});
+    }
+
+    // ── SLIDE 2: Executive Overview ───────────────────────────────────────────
+    {
+      const s = pptx.addSlide();
+      addHeaderBar(s,'EXECUTIVE OVERVIEW',label);
+      const quads=[
+        {n:'01',name:'REVENUE',desc:'YTD Revenue Performance & Core Business Overview',col:C.green,bg:'F0FDF4'},
+        {n:'02',name:'GROWTH',desc:'Period Growth Analysis & Year-over-Year Comparisons',col:C.orange,bg:'FFF7ED'},
+        {n:'03',name:'OUTLETS',desc:'Outlet Performance, Regional & Area Analysis',col:C.green,bg:'F0FDF4'},
+        {n:'04',name:'CATEGORY',desc:'Category Sales YTD & Monthly Performance',col:C.orange,bg:'FFF7ED'},
+      ];
+      const qw=6.3, qh=2.6, gap=0.12, startY=1.05;
+      quads.forEach((q,i)=>{
+        const col=i%2, row=Math.floor(i/2);
+        const x=0.2+col*(qw+gap), y=startY+row*(qh+gap);
+        s.addShape(pptx.ShapeType.rect,{x,y,w:qw,h:qh,fill:{color:q.bg}});
+        s.addShape(pptx.ShapeType.rect,{x,y,w:0.1,h:qh,fill:{color:q.col}});
+        s.addText(q.n,{x:x+0.25,y:y+0.1,w:2,h:0.7,fontSize:30,bold:true,color:q.col+'55'});
+        s.addText(q.name,{x:x+0.25,y:y+0.78,w:qw-0.4,h:0.55,fontSize:18,bold:true,color:q.col});
+        s.addText(q.desc,{x:x+0.25,y:y+1.38,w:qw-0.4,h:0.9,fontSize:11,color:C.dkgray,wrap:true});
+      });
+    }
+
+    // ── SLIDE 3: Revenue ───────────────────────────────────────────────────────
+    {
+      const s = pptx.addSlide();
+      addHeaderBar(s,'REVENUE',label);
+      sectionLabel(s,'CORE BUSINESS (Million)',0.2,1.0,7);
+      if(coreBizRows.length&&rovCols.length){
+        const cw = [2.8,...rovCols.map(()=>+(9.9/rovCols.length).toFixed(2))];
+        const tblR = [
+          _hdr(['Business Unit',...rovCols]),
+          ...coreBizRows.map(r=>{
+            const isT=/total/i.test(r[0]);
+            return (isT?_totRow:r=>r.map((t,i)=>_cell(t,{align:i>0?'right':'left'})))([r[0],...rovCols.map((_,i)=>r[i+1]||'—')]);
+          }),
+        ];
+        s.addTable(tblR,{x:0.2,y:1.42,w:12.9,colW:cw,border:{pt:0.3,color:'DDDDDD'}});
+      }
+      if(otherBizRows.length){
+        sectionLabel(s,'OTHER BUSINESSES (Million)',0.2,4.35,7,true);
+        const cw2=[2.5,...rovCols.slice(-2).map(()=>1.8),1.8];
+        const tblR2=[
+          _hdr(['Business',...rovCols.slice(-2),'MoM Chg'],C.orange),
+          ...otherBizRows.filter(r=>!/total/i.test(r[0])).map(r=>{
+            const prev=_pN(r[r.length-2]),curr=_pN(r[r.length-1]);
+            const chg=prev&&curr?((curr-prev)/prev*100):null;
+            return [_cell(r[0]),_numCell(r[r.length-2]),_numCell(r[r.length-1]),
+              _cell(chg!=null?`${chg>=0?'+':''}${chg.toFixed(1)}%`:'—',{align:'center',color:chg==null?C.gray:chg>=0?C.green:C.concern,bold:true})];
+          }),
+        ];
+        s.addTable(tblR2,{x:0.2,y:4.75,w:7.9,colW:cw2,border:{pt:0.3,color:'DDDDDD'}});
+      }
+      if(ytdRowD){
+        const ytdN=_pN(ytdRowD[1]);
+        kpiBox(s,8.2,4.35,2.5,1.5,'YTD REVENUE',ytdN?`N${ytdN.toFixed(2)}B`:'—',C.green,C.lgreenBg,C.green);
+      }
+      if(latestRg){
+        const voy=_pN(latestRg[3]);
+        kpiBox(s,11.0,4.35,2.1,1.5,`${latestRg[0]} VAL YoY`,voy!=null?`${voy>=0?'+':''}${voy.toFixed(1)}%`:'—',voy>=0?C.green:C.concern,C.lorangeBg,C.orange);
+      }
+    }
+
+    // ── SLIDE 4: Growth ────────────────────────────────────────────────────────
+    {
+      const s = pptx.addSlide();
+      addHeaderBar(s,'REVENUE & GROWTH',label);
+      const kpis=[
+        {lbl:`${latestRg?.[0]||''} VALUE YoY`, v:latestRg?.[3], orange:false},
+        {lbl:`${latestRg?.[0]||''} VOLUME YoY`,v:latestRg?.[4], orange:false},
+        {lbl:'BIZ YTD GROWTH',                 v:ytdRg?.[3],    orange:true},
+        {lbl:'SAME STORE YTD',                 v:ssRg?.[3],     orange:true},
+      ].filter(k=>k.v!=null);
+      const kw2=12.9/kpis.length-0.12;
+      kpis.forEach((k,i)=>{
+        const x=0.2+i*(kw2+0.12), n=_pN(k.v);
+        kpiBox(s,x,1.0,kw2,1.4,k.lbl,n!=null?`${n>=0?'+':''}${n.toFixed(1)}%`:'—',n>=0?C.green:C.concern,k.orange?C.lorangeBg:C.lgreenBg,k.orange?C.orange:C.green);
+      });
+      sectionLabel(s,'MONTHLY GROWTH PERFORMANCE',0.2,2.6,9);
+      if(rgRows.length){
+        const tblR=[
+          _hdr(['Period','2026 (M)','2025 (M)','Val YoY%','Vol YoY%','Same Store%']),
+          ...rgRows.map(r=>{
+            const isY=/ytd/i.test(r[0]);
+            const fn=isY?_totRow:cols=>cols.map((t,i)=>_cell(t,{align:i>0?'right':'left'}));
+            const v3=_pN(r[3]),v4=_pN(r[4]),v5=_pN(r[5]);
+            return fn([r[0],r[1]?Number(r[1]).toLocaleString():'—',r[2]?Number(r[2]).toLocaleString():'—',
+              v3!=null?`${v3>=0?'+':''}${v3.toFixed(1)}%`:'—',
+              v4!=null?`${v4>=0?'+':''}${v4.toFixed(1)}%`:'—',
+              v5!=null?`${v5>=0?'+':''}${v5.toFixed(1)}%`:'—']);
+          }),
+        ];
+        s.addTable(tblR,{x:0.2,y:3.05,w:12.9,colW:[1.9,2.2,2.2,2.2,2.2,2.2],border:{pt:0.3,color:'DDDDDD'}});
+      }
+    }
+
+    // ── SLIDE 5: Outlet Performance ────────────────────────────────────────────
+    {
+      const s = pptx.addSlide();
+      const gAch=_normPct(globalOutlet?.[5]??globalOutlet?.[4]);
+      addHeaderBar(s,`OUTLET PERFORMANCE  ·  ${gAch?gAch.toFixed(1)+'% of Target':''}`,label);
+      if(globalOutlet){
+        const col=gAch>=90?C.green:gAch>=80?C.weak:C.concern;
+        s.addShape(pptx.ShapeType.rect,{x:0.2,y:1.0,w:2.5,h:1.4,fill:{color:C.lgreenBg},line:{color:col,pt:2}});
+        s.addText('GLOBAL ACHIEVEMENT',{x:0.3,y:1.1,w:2.3,h:0.3,fontSize:8,bold:true,color:C.gray});
+        s.addText(`${gAch?.toFixed(1)}%`,{x:0.3,y:1.4,w:2.3,h:0.75,fontSize:28,bold:true,color:col,align:'center'});
+      }
+      const outTbl=[
+        _hdr(['OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS']),
+        ...(globalOutlet?[[
+          _cell('GLOBAL',{bold:true,fill:{color:C.greatBg}}),
+          _numCell(_fmtRaw(globalOutlet[1]),{bold:true,fill:{color:C.greatBg}}),
+          _numCell(_fmtRaw(globalOutlet[2]),{bold:true,fill:{color:C.greatBg}}),
+          _numCell(_fmtRaw(globalOutlet[4]),{bold:true,fill:{color:C.greatBg}}),
+          _cell(`${_normPct(globalOutlet[5])?.toFixed(1)||'—'}%`,{bold:true,align:'center',fill:{color:C.greatBg},color:_statusColor(globalOutlet[5])[0]}),
+          _cell(_statusLabel(globalOutlet[5]),{bold:true,align:'center',fill:{color:_statusColor(globalOutlet[5])[1]},color:_statusColor(globalOutlet[5])[0]}),
+        ]]:[]),
+        ...outletRows_d.slice(0,20).map(r=>{
+          const pv=_normPct(r[5]); const [sc,sbg]=_statusColor(r[5]);
+          return [_cell(r[0]),_numCell(_fmtRaw(r[1])),_numCell(_fmtRaw(r[2])),_numCell(_fmtRaw(r[4])),
+            _cell(pv!=null?`${pv.toFixed(1)}%`:'—',{align:'center',color:sc}),
+            _cell(_statusLabel(r[5]),{align:'center',fill:{color:sbg},color:sc})];
+        }),
+      ];
+      s.addTable(outTbl,{x:0.2,y:1.0,w:12.9,colW:[2.4,2.3,2.3,2.3,1.5,2.1],border:{pt:0.3,color:'DDDDDD'},fontSize:8});
+    }
+
+    // ── SLIDE 6: Regional Performance ─────────────────────────────────────────
+    {
+      const s = pptx.addSlide();
+      addHeaderBar(s,'REGIONAL PERFORMANCE',label);
+      if(regions_d.length){
+        const rw=Math.min(4.2,(W-0.6)/regions_d.length);
+        regions_d.forEach((r,i)=>{
+          const pv=_normPct(r[5]??r[4]);
+          const col=pv>=90?C.green:pv>=80?C.weak:C.concern;
+          const bg=pv>=90?'F0FDF4':pv>=80?'FEF3C7':'FEE2E2';
+          const x=0.2+i*(rw+0.12);
+          s.addShape(pptx.ShapeType.rect,{x,y:1.05,w:rw,h:2.6,fill:{color:bg},line:{color:col,pt:1.5}});
+          s.addShape(pptx.ShapeType.rect,{x,y:1.05,w:0.1,h:2.6,fill:{color:col}});
+          s.addText(r[0],{x:x+0.2,y:1.15,w:rw-0.3,h:0.5,fontSize:15,bold:true,color:col});
+          s.addText(`${pv?.toFixed(0)}%`,{x:x+0.2,y:1.7,w:rw-0.3,h:1.0,fontSize:34,bold:true,color:col,align:'center'});
+          s.addText(`Target: ${_fmtRaw(r[3])}`,{x:x+0.2,y:2.8,w:rw-0.3,h:0.28,fontSize:9,color:C.dkgray});
+          s.addText(`Actual: ${_fmtRaw(r[2])}`,{x:x+0.2,y:3.1,w:rw-0.3,h:0.28,fontSize:9,color:C.dkgray});
+        });
+        sectionLabel(s,'REGIONAL SALES SUMMARY',0.2,3.85,9);
+        const regTbl=[
+          _hdr(['REGION','ACTUAL SALES','TARGET','DIFF','ACH%','STATUS']),
+          ...regions_d.map(r=>{
+            const pv=_normPct(r[5]??r[4]); const [sc,sbg]=_statusColor(r[5]??r[4]);
+            return [_cell(r[0]),_numCell(_fmtRaw(r[2])),_numCell(_fmtRaw(r[3])),_numCell(_fmtRaw(r[4])),
+              _cell(pv!=null?`${pv.toFixed(1)}%`:'—',{align:'center',color:sc,bold:true}),
+              _cell(_statusLabel(r[5]??r[4]),{align:'center',fill:{color:sbg},color:sc})];
+          }),
+        ];
+        s.addTable(regTbl,{x:0.2,y:4.25,w:12.9,colW:[2.2,2.6,2.6,2.6,1.6,1.3],border:{pt:0.3,color:'DDDDDD'}});
+      }
+    }
+
+    // ── SLIDE 7: Area Leaders ──────────────────────────────────────────────────
+    {
+      const s = pptx.addSlide();
+      addHeaderBar(s,'AREA LEADERS PERFORMANCE',label);
+      if(areaGrouped_d.length){
+        const areaTbl=[
+          _hdr(['LEADER','OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS']),
+          ...areaGrouped_d.map(({leader,outlet,target,actual,diff,pct,isTotal})=>{
+            const pv=_normPct(pct); const [sc,sbg]=_statusColor(pct);
+            const bg=isTotal?C.greatBg:null;
+            const fo=v=>bg?{...v,options:{...v.options,fill:{color:bg}}}:v;
+            return [
+              fo(_cell(leader,{bold:!!leader,color:leader?C.green:C.dkgray})),
+              fo(_cell(outlet,{bold:isTotal})),
+              fo(_numCell(_fmtRaw(target),{bold:isTotal})),
+              fo(_numCell(_fmtRaw(actual),{bold:isTotal})),
+              fo(_numCell(_fmtRaw(diff),{bold:isTotal})),
+              fo(_cell(pv!=null?`${pv.toFixed(1)}%`:'—',{align:'center',color:sc,bold:isTotal})),
+              _cell(_statusLabel(pct),{align:'center',fill:{color:isTotal?C.greatBg:sbg},color:sc}),
+            ];
+          }),
+        ];
+        s.addTable(areaTbl,{x:0.2,y:1.0,w:12.9,colW:[1.7,1.8,2.0,2.0,2.0,1.6,1.8],border:{pt:0.3,color:'DDDDDD'},fontSize:8});
+      }
+    }
+
+    // ── SLIDE 8: Category Sales YTD ────────────────────────────────────────────
+    {
+      const s = pptx.addSlide();
+      addHeaderBar(s,'CATEGORY SALES YTD',label);
+      if(catYTDRows_d.length&&catYTDCols_d.length){
+        sectionLabel(s,'DEPARTMENT PERFORMANCE BY MONTH',0.2,1.0,10);
+        const cw=[2.5,...catYTDCols_d.map(()=>+(10.4/catYTDCols_d.length).toFixed(3))];
+        const catTbl=[
+          _hdr(['DEPARTMENT',...catYTDCols_d]),
+          ...catYTDRows_d.map(r=>{
+            const isT=/total/i.test(r[0]);
+            return isT?_totRow([r[0],...catYTDCols_d.map((_,i)=>_fmtRaw(r[i+1]))]):
+              [_cell(r[0]),...catYTDCols_d.map((_,i)=>_numCell(_fmtRaw(r[i+1])))];
+          }),
+        ];
+        s.addTable(catTbl,{x:0.2,y:1.45,w:12.9,colW:cw,border:{pt:0.3,color:'DDDDDD'}});
+        const topCats=catYTDRows_d.filter(r=>!/total/i.test(r[0])).slice(0,4);
+        topCats.forEach((r,i)=>{
+          const x=0.2+i*3.2;
+          kpiBox(s,x,5.8,3.0,1.5,String(r[0]),_fmtRaw(r[r.length-1]),'#'+C.green,C.lgreenBg,C.green);
+        });
+      }
+    }
+
+    // ── SLIDE 9: June Category Performance ────────────────────────────────────
+    {
+      const s = pptx.addSlide();
+      addHeaderBar(s,'JUNE CATEGORY PERFORMANCE',label);
+      if(catLatRows_d.length&&catLatCols_d.length){
+        sectionLabel(s,'JUNE vs MAY TARGET ACHIEVEMENT',0.2,1.0,10,true);
+        const nc=catLatCols_d.length;
+        const cw=[2.5,...catLatCols_d.map(()=>+(10.4/nc).toFixed(3))];
+        const catLatTbl=[
+          _hdr(['DEPARTMENT',...catLatCols_d],C.orange),
+          ...catLatRows_d.map(r=>{
+            const isG=/global|total/i.test(r[0]);
+            return [_cell(r[0],{bold:isG,fill:isG?{color:C.greatBg}:{}}),
+              ...catLatCols_d.map((_,i)=>{
+                const v=r[i+1]; const isA=catLatCols_d[i]?.includes('%');
+                const n=_pN(v); const col=isA&&n!=null?(n>=90?C.green:n>=80?C.weak:C.concern):C.dkgray;
+                return _cell(isA?(n!=null?`${n.toFixed(1)}%`:'—'):_fmtRaw(v),{align:'right',color:col,bold:isG,fill:isG?{color:C.greatBg}:{}});
+              })];
+          }),
+        ];
+        s.addTable(catLatTbl,{x:0.2,y:1.45,w:12.9,colW:cw,border:{pt:0.3,color:'DDDDDD'}});
+      }
+    }
+
+    // ── SLIDE 10: YoY Comparison ───────────────────────────────────────────────
+    if(yoyGrow.length||yoyDec.length){
+      const s = pptx.addSlide();
+      addHeaderBar(s,'OUTLET YEAR-ON-YEAR COMPARISON (SM + 3F)',label);
+      function yoyTbl(rows,bg,startX,totalW){
+        const cw=[2.1,1.5,1.5,1.3,0.8];
+        return rows.slice(0,11).map(r=>{
+          const pv=_pN(r[r.length-1]); const isGrow=pv>=0;
+          return [_cell(r[0]),_numCell(_fmtRaw(r[2])),_numCell(_fmtRaw(r[4])),
+            _numCell(_fmtRaw(r[6]),{color:isGrow?C.green:C.concern}),
+            _cell(pv!=null?`${pv>=0?'+':''}${pv.toFixed(1)}%`:'—',{align:'center',bold:true,color:isGrow?C.green:C.concern})];
+        });
+      }
+      if(yoyGrow.length){
+        sectionLabel(s,'TOP GROWERS',0.2,1.0,6.2);
+        const tbl=[_hdr(['OUTLET','2025 VAL','2026 VAL','DIFF','% VAL']),...yoyTbl(yoyGrow,C.greatBg,0.2,6.2)];
+        s.addTable(tbl,{x:0.2,y:1.42,w:6.2,colW:[2.1,1.3,1.3,1.0,0.5],border:{pt:0.3,color:'DDDDDD'},fontSize:8});
+      }
+      if(yoyDec.length){
+        sectionLabel(s,'DECLINERS',6.7,1.0,6.2,true);
+        const tbl=[_hdr(['OUTLET','2025 VAL','2026 VAL','DIFF','% VAL'],C.orange),...yoyTbl(yoyDec,C.concernBg,6.7,6.4)];
+        s.addTable(tbl,{x:6.7,y:1.42,w:6.4,colW:[2.3,1.3,1.3,1.0,0.5],border:{pt:0.3,color:'DDDDDD'},fontSize:8});
+      }
+    }
+
+    // ── SLIDE 11: Utilities ────────────────────────────────────────────────────
+    if(util_d.length){
+      const s = pptx.addSlide();
+      addHeaderBar(s,'UTILITIES & POWER COST',label);
+      util_d.slice(0,4).forEach((r,i)=>{
+        const x=0.2+i*3.2;
+        s.addShape(pptx.ShapeType.rect,{x,y:1.0,w:3.0,h:1.4,fill:{color:C.lorangeBg},line:{color:C.orange,pt:1.5}});
+        s.addText(String(r[0]||''),{x:x+0.1,y:1.1,w:2.8,h:0.3,fontSize:9,color:C.gray,bold:true});
+        s.addText(String(r[r.length-1]||'—'),{x:x+0.1,y:1.45,w:2.8,h:0.65,fontSize:18,bold:true,color:C.orange,align:'center'});
+      });
+      sectionLabel(s,'UTILITY DETAILS',0.2,2.6,9,true);
+      const utilTbl=[
+        _hdr(['Description','Jan','Feb','Mar','Apr','May','Jun'],C.orange),
+        ...util_d.map(r=>[_cell(r[0]),_numCell(r[1]||'—'),_numCell(r[2]||'—'),_numCell(r[3]||'—'),_numCell(r[4]||'—'),_numCell(r[5]||'—'),_numCell(r[6]||'—')]),
+      ];
+      s.addTable(utilTbl,{x:0.2,y:3.05,w:12.9,colW:[4.2,1.45,1.45,1.45,1.45,1.45,1.45],border:{pt:0.3,color:'DDDDDD'}});
+    }
+
+    // ── SLIDE 12: Thank You ────────────────────────────────────────────────────
+    {
+      const s = pptx.addSlide();
+      s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:C.green}});
+      s.addShape(pptx.ShapeType.rect,{x:0,y:H*0.58,w:W,h:H*0.42,fill:{color:'0F4C28'}});
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:2.9,w:6.33,h:0.07,fill:{color:C.orange}});
+      s.addText('Thank You',{x:0.5,y:1.1,w:W-1,h:1.3,fontSize:46,bold:true,color:C.white,align:'center'});
+      s.addText('FoodCo Nigeria Limited',{x:0.5,y:3.1,w:W-1,h:0.6,fontSize:16,bold:true,color:'AADDB0',align:'center'});
+      s.addText(`${label} 2026 Sales Report`,{x:0.5,y:3.75,w:W-1,h:0.45,fontSize:13,color:'AADDB0',align:'center'});
+      const hi=[];
+      if(ytdRg) hi.push(`BIZ YTD Growth: ${_pN(ytdRg[3])?.toFixed(1)}%`);
+      if(globalOutlet) hi.push(`Global Achievement: ${_normPct(globalOutlet[5])?.toFixed(1)}%`);
+      if(latestRg) hi.push(`${latestRg[0]} Val YoY: ${_pN(latestRg[3])?.toFixed(1)}%`);
+      if(hi.length) s.addText(hi.join('   ·   '),{x:0.5,y:5.3,w:W-1,h:0.5,fontSize:11,color:'77BB88',align:'center'});
+    }
+
+    await pptx.writeFile({fileName:`FoodCo_${label}_2026_Sales_Report.pptx`});
+  } catch(e) {
+    console.error('PPTX error', e);
+    alert(`Failed to generate PPTX: ${e.message}`);
+  } finally {
+    if(btn){ btn.textContent='⬇ Download PPTX'; btn.disabled=false; }
+  }
+};
 
 // Global tab switcher for exec report — must be global because onclick= in innerHTML can't see closure scope
 window.erSwitchTab = function(id, btn) {
@@ -3576,6 +4035,7 @@ function renderExecReport(data) {
       <div class="er-header-right">
         <div class="er-gen-date">Generated: ${now}</div>
         <button class="btn-ghost" onclick="window.print()" style="font-size:0.78rem;margin-top:4px;">🖨 Print</button>
+        <button class="btn-primary" id="dlPptxBtn" onclick="window.downloadAsPptx()" style="font-size:0.78rem;margin-top:4px;padding:4px 12px;">⬇ Download PPTX</button>
       </div>
     </div>
 
