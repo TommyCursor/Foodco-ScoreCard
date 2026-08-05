@@ -3269,11 +3269,11 @@ window.downloadAsPptx = async function() {
       // 3. Thin orange bar at very bottom (brand accent)
       s.addShape(pptx.ShapeType.rect,{x:0,y:H-0.07,w:W,h:0.07,fill:{color:C.orange}});
 
-      // 4. Logo — exact position scaled from original 17.78×10" → 13.33×7.5"
-      //    Original: x=6.81, y=2.78, w=4.17, h=1.39  ×  (13.33/17.78 = 0.7497)
-      const lw=3.13, lh=1.04, lx=5.10, ly=2.08;
-      // Thin green accent line above logo (matching original)
-      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly-0.18,w:6.33,h:0.04,fill:{color:'4ade80'}});
+      // 4. Logo — original displayed at ~3:1 ratio but intentionally stretched tall for presence
+      //    Scaled from 17.78×10 original, then height boosted to match original visual weight
+      const lw=4.0, lh=1.38, lx=(W-4.0)/2, ly=1.75;
+      // Thin green accent line above logo
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly-0.16,w:6.33,h:0.04,fill:{color:'4ade80'}});
       if (logoDataUrl) {
         s.addImage({data:logoDataUrl, x:lx, y:ly, w:lw, h:lh});
       }
@@ -3286,21 +3286,21 @@ window.downloadAsPptx = async function() {
         fontSize:52,bold:true,color:C.white,align:'center',fontFace:'Liter'});
       // 6. Subtitle — Liter 24
       s.addText('FOODCO NIGERIA',{
-        x:0.5,y:ly+lh+1.22,w:W-1,h:0.5,
+        x:0.5,y:ly+lh+1.2,w:W-1,h:0.5,
         fontSize:24,color:'AADDB0',align:'center',fontFace:'Liter'});
       // 7. Thin divider below subtitle
-      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly+lh+1.82,w:6.33,h:0.04,fill:{color:'6B8F72'}});
+      s.addShape(pptx.ShapeType.rect,{x:3.5,y:ly+lh+1.8,w:6.33,h:0.04,fill:{color:'6B8F72'}});
       // 8. Presented by Ayodele Adio — Quattrocento Sans 20, name bold
       s.addText([{text:'Presented by ',options:{bold:false}},{text:'Ayodele Adio',options:{bold:true}}],{
-        x:0.5,y:ly+lh+1.97,w:W-1,h:0.5,
+        x:0.5,y:ly+lh+1.95,w:W-1,h:0.5,
         fontSize:20,color:C.white,align:'center',fontFace:'Quattrocento Sans'});
       // 9. Head, Sales Operations — Quattrocento Sans 20
       s.addText('Head, Sales Operations',{
-        x:0.5,y:ly+lh+2.5,w:W-1,h:0.5,
+        x:0.5,y:ly+lh+2.48,w:W-1,h:0.5,
         fontSize:20,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
       // 10. Date — Quattrocento Sans 16
       s.addText(presDate,{
-        x:0.5,y:ly+lh+3.05,w:W-1,h:0.4,
+        x:0.5,y:ly+lh+3.0,w:W-1,h:0.4,
         fontSize:16,color:'AADDB0',align:'center',fontFace:'Quattrocento Sans'});
     }
 
