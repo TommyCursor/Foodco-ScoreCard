@@ -2271,12 +2271,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('backFromPin').addEventListener('click', goBack);
 
   // ── Dev backdoor ─────────────────────────────────────────────────────────
-  // Trigger: Ctrl+Shift+D anywhere on the page
-  document.addEventListener('keydown', e => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-      e.preventDefault();
+  // Trigger: click the Foodco logo 5 times within 3 seconds
+  let _devClickCount = 0, _devClickTimer = null;
+  document.querySelector('.logo-mark')?.addEventListener('click', () => {
+    _devClickCount++;
+    clearTimeout(_devClickTimer);
+    if (_devClickCount >= 5) {
+      _devClickCount = 0;
       document.getElementById('devLoginModal').classList.remove('hidden');
       document.getElementById('devEmail').focus();
+    } else {
+      _devClickTimer = setTimeout(() => { _devClickCount = 0; }, 3000);
     }
   });
 
