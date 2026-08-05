@@ -2271,19 +2271,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('backFromPin').addEventListener('click', goBack);
 
   // ── Dev backdoor ─────────────────────────────────────────────────────────
-  // Trigger: click the Foodco logo 5 times within 3 seconds
+  // Trigger 1: navigate to /#devaccess
+  // Trigger 2: click any Foodco logo 5 times within 3 seconds
+  function openDevModal() {
+    document.getElementById('devLoginModal').classList.remove('hidden');
+    document.getElementById('devEmail').focus();
+    history.replaceState(null, '', window.location.pathname);
+  }
+  if (window.location.hash === '#devaccess') openDevModal();
+  window.addEventListener('hashchange', () => {
+    if (window.location.hash === '#devaccess') openDevModal();
+  });
   let _devClickCount = 0, _devClickTimer = null;
-  document.querySelector('.logo-mark')?.addEventListener('click', () => {
+  function handleDevLogoClick() {
     _devClickCount++;
     clearTimeout(_devClickTimer);
     if (_devClickCount >= 5) {
       _devClickCount = 0;
-      document.getElementById('devLoginModal').classList.remove('hidden');
-      document.getElementById('devEmail').focus();
+      openDevModal();
     } else {
       _devClickTimer = setTimeout(() => { _devClickCount = 0; }, 3000);
     }
-  });
+  }
+  document.querySelectorAll('.logo-mark, .hero-logo-mark').forEach(el =>
+    el.addEventListener('click', handleDevLogoClick)
+  );
 
   document.getElementById('devModalCancelBtn').addEventListener('click', () => {
     document.getElementById('devLoginModal').classList.add('hidden');
