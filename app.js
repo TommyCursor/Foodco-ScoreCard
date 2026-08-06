@@ -4306,19 +4306,28 @@ window.presentReport = async function() {
   }
   function table(headers,rows,orangeHdr=false,compact=false){
     const hbg=orangeHdr?'#ea580c':'#166534';
-    return `<div class="ps-tbl-wrap${compact?' ps-compact':''}"><table class="ps-tbl"><thead><tr>${headers.map(h=>`<th style="background:${hbg};text-align:center">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,ri)=>`<tr class="${ri%2===1?'ps-alt':''}">${r.map(c=>{ const isObj=typeof c==='object'&&c!==null; const txt=isObj?c.text:c; const sty=isObj?`style="${c.style||''}"`:''  ; return `<td ${sty}>${esc(txt)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
+    // Infer per-column alignment from first data row so headers match data
+    const firstRow=rows[0]||[];
+    const hAligns=headers.map((_,i)=>{
+      if(i===0) return 'left';
+      const c=firstRow[i];
+      if(typeof c==='object'&&c?.style&&/right/.test(c.style)) return 'right';
+      if(typeof c==='object'&&c?.style&&/center/.test(c.style)) return 'center';
+      return 'center';
+    });
+    return `<div class="ps-tbl-wrap${compact?' ps-compact':''}"><table class="ps-tbl"><thead><tr>${headers.map((h,i)=>`<th style="background:${hbg};text-align:${hAligns[i]}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,ri)=>`<tr class="${ri%2===1?'ps-alt':''}">${r.map(c=>{ const isObj=typeof c==='object'&&c!==null; const txt=isObj?c.text:c; const sty=isObj?`style="${c.style||''}"`:''  ; return `<td ${sty}>${esc(txt)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
   function statusCell(v){ const s=sColor(v); return {text:s.lbl,style:`color:${s.c};background:${s.bg};font-weight:700;text-align:center`}; }
   function numCell(v,col){ return {text:String(v||'—'),style:`text-align:right${col?`;color:${col}`:''}` }; }
   function pctCell(v){ const n=normPct(v); const col=n!=null?(n>=90?'#166534':n>=80?'#D97706':'#DC2626'):'#6B7280'; return {text:n!=null?`${n.toFixed(1)}%`:'—',style:`text-align:right;font-weight:700;color:${col}`}; }
 
-  // ── Bar chart (CSS-based) ─────────────────────────────────────────────────
+  // ── Bar chart (CSS-based) — value label floats above each bar ────────────
   function barChart(labels,values,title){
     const max=Math.max(...values,0.01);
     const bars=labels.map((lb,i)=>{
-      const h=Math.round(values[i]/max*100);
+      const h=Math.max(4,Math.round(values[i]/max*100));
       const v=values[i]!=null?`N${values[i].toFixed(2)}B`:'';
-      return `<div class="ps-bar-col"><div class="ps-bar-val">${v}</div><div class="ps-bar-body" style="height:${h}%"></div><div class="ps-bar-lbl">${esc(lb)}</div></div>`;
+      return `<div class="ps-bar-col"><div class="ps-bar-inner"><div class="ps-bar-body" style="height:${h}%"><span class="ps-bar-val">${v}</span></div></div><div class="ps-bar-lbl">${esc(lb)}</div></div>`;
     }).join('');
     return `<div class="ps-chart-wrap"><div class="ps-chart-title">${esc(title)}</div><div class="ps-bars">${bars}</div></div>`;
   }
@@ -4471,16 +4480,24 @@ window.presentReport = async function() {
     </div>
   </div>`);
 
-  // Slide 8: Area Leaders
-  SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('OUTLETS','AREA LEADERS PERFORMANCE',8)}
+  // Slide 8: Area Leaders — split into 2 pages if data is large
+  const AL_PER = 20;
+  const alChunks = areaRows.length > AL_PER
+    ? [areaRows.slice(0, AL_PER), areaRows.slice(AL_PER)]
+    : [areaRows];
+  alChunks.forEach((chunk, ci) => {
+    const suffix = alChunks.length > 1 ? ` (${ci+1}/${alChunks.length})` : '';
+    const pgN = SLIDES.length + 1;
+    SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('OUTLETS',`AREA LEADERS PERFORMANCE${suffix}`,pgN)}
     <div class="ps-body">
       ${table(['LEADER','OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS'],
-        areaRows.map(r=>[ {text:r.leader,style:r.leader?'color:#166534;font-weight:700':''}, {text:r.outlet,style:r.isTotal?'font-weight:700':''}, numCell(fmtRaw(r.target),''), numCell(fmtRaw(r.actual),''), numCell(fmtRaw(r.diff),''), pctCell(r.pct), statusCell(r.pct) ]),
+        chunk.map(r=>[ {text:r.leader,style:r.leader?'color:#166534;font-weight:700':''}, {text:r.outlet,style:r.isTotal?'font-weight:700':''}, numCell(fmtRaw(r.target),''), numCell(fmtRaw(r.actual),''), numCell(fmtRaw(r.diff),''), pctCell(r.pct), statusCell(r.pct) ]),
         false, true
       )}
     </div>
   </div>`);
+  });
 
   // Slide 9: Top 5 Stores (static fallback — TopStores sheet structure varies)
   const topStores=data.topStores||[];
@@ -4579,7 +4596,7 @@ window.presentReport = async function() {
             {lbl:'YTD TOTAL',val:fmtBig(ytdP),col:p.col,bg:p.bg,bd:p.bd},
             {lbl:'VS PREV',val:mom2!=null?`${mom2>=0?'+':''}${mom2.toFixed(1)}%`:'—',col:mom2!=null&&mom2>=0?'#166534':'#DC2626',bg:mom2!=null&&mom2>=0?'#F0FDF4':'#FEE2E2',bd:mom2!=null&&mom2>=0?'#166534':'#DC2626'},
           ].map(k=>kpiCard(k.lbl,k.val,k.col,k.bg,k.bd)).join('')}</div>
-          ${rovMonths.length?table([p.label,...rovMonths.slice(0,p.vals.length)],[[ {text:'Revenue (M)',style:`font-weight:700;color:${p.col}`}, ...p.vals.map((v,i)=>({text:fmtBig(v),style:`text-align:right;${i===p.vals.length-1?`font-weight:700;color:${p.col}`:''}`})) ]]):''}</div>`;
+          ${rovMonths.length?table(['METRIC',...rovMonths.slice(0,p.vals.length)],[[ {text:'Revenue (₦M)',style:`font-weight:700;color:${p.col}`}, ...p.vals.map((v,i)=>({text:fmtBig(v),style:`text-align:right;${i===p.vals.length-1?`font-weight:700;color:${p.col}`:''}`})) ]]):''}</div>`;
       }).join('')}
     </div>
     <div class="ps-insight-banner" style="background:#1E3A2A;color:#fff"><strong style="color:#AADDB0">YTD Combined: ${fmtBig(totYTD)}</strong> | Supermarket: ${fmtBig(smYTD)} (${totYTD?(smYTD/totYTD*100).toFixed(1):0}%) | Restaurant: ${fmtBig(rstYTD)} (${totYTD?(rstYTD/totYTD*100).toFixed(1):0}%)</div>
@@ -4661,109 +4678,109 @@ window.presentReport = async function() {
     style.textContent=`
       /* ── Overlay shell ── */
       #ps-overlay{position:fixed;inset:0;z-index:99999;background:#111;display:flex;flex-direction:column;align-items:stretch;}
-      #ps-progress{height:3px;background:#ea580c;transition:width .25s;flex-shrink:0;}
+      #ps-progress{height:4px;background:#ea580c;transition:width .25s;flex-shrink:0;}
       #ps-stage{flex:1;position:relative;overflow:hidden;}
       #ps-frame{position:absolute;top:50%;left:50%;width:1280px;height:720px;background:#fff;overflow:hidden;box-shadow:0 8px 48px rgba(0,0,0,.6);}
-      #ps-close{position:absolute;top:10px;right:14px;z-index:10;background:rgba(0,0,0,.55);border:none;color:#fff;font-size:1.1em;cursor:pointer;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;}
-      #ps-close:hover{background:rgba(234,88,12,.85);}
-      /* ── Controls bar (below stage, never overlapping slide) ── */
-      #ps-controls{flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:14px;background:#1a1a1a;padding:9px 24px;border-top:1px solid #333;}
-      #ps-controls button{background:none;border:1px solid #444;color:#ddd;font-size:1em;cursor:pointer;padding:4px 10px;border-radius:20px;transition:all .15s;}
+      #ps-close{position:absolute;top:12px;right:16px;z-index:10;background:rgba(0,0,0,.55);border:none;color:#fff;font-size:1.2em;cursor:pointer;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;}
+      #ps-close:hover{background:rgba(234,88,12,.9);}
+      /* ── Controls bar ── */
+      #ps-controls{flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:16px;background:#1a1a1a;padding:10px 28px;border-top:1px solid #333;}
+      #ps-controls button{background:none;border:1px solid #555;color:#ddd;font-size:1.05em;cursor:pointer;padding:6px 18px;border-radius:22px;transition:all .15s;}
       #ps-controls button:hover{background:#ea580c;border-color:#ea580c;color:#fff;}
-      #ps-counter{color:#aaa;font-size:0.82em;min-width:56px;text-align:center;letter-spacing:.5px;}
+      #ps-counter{color:#bbb;font-size:0.92em;min-width:70px;text-align:center;letter-spacing:.5px;}
       .ps-slide{width:1280px;height:720px;position:relative;background:#fff;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;display:flex;flex-direction:column;}
-      /* Cover */
+      /* ── Cover ── */
       .ps-cover{background:#0D3318;}
-      .ps-cover-bg{position:absolute;inset:0;background:rgba(0,0,0,.42);}
-      .ps-cover-body{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:24px 80px 20px;gap:8px;}
-      .ps-cover-logo{max-height:130px;max-width:380px;object-fit:contain;}
-      .ps-cover-logo-text{font-size:3em;font-weight:900;color:#166534;letter-spacing:2px;}
-      .ps-cover-line{width:70%;height:3px;background:#4ade80;margin:4px 0;}
-      .ps-cover-title{font-size:2.8em;font-weight:900;color:#fff;text-align:center;letter-spacing:1px;line-height:1.15;}
-      .ps-cover-sub{font-size:1.3em;color:#AADDB0;text-align:center;letter-spacing:3px;}
-      .ps-cover-presenter{font-size:1em;color:#fff;text-align:center;}
-      .ps-cover-role{font-size:1em;color:#AADDB0;text-align:center;}
-      .ps-cover-date{font-size:0.85em;color:#AADDB0;text-align:center;}
+      .ps-cover-bg{position:absolute;inset:0;background:rgba(0,0,0,.38);}
+      .ps-cover-body{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 80px;gap:10px;}
+      .ps-cover-logo{max-height:260px;max-width:600px;object-fit:contain;}
+      .ps-cover-logo-text{font-size:4em;font-weight:900;color:#AADDB0;letter-spacing:3px;}
+      .ps-cover-line{width:72%;height:3px;background:#4ade80;margin:6px 0;}
+      .ps-cover-title{font-size:3.2em;font-weight:900;color:#fff;text-align:center;letter-spacing:1px;line-height:1.15;}
+      .ps-cover-sub{font-size:1.6em;color:#AADDB0;text-align:center;letter-spacing:4px;margin-top:4px;}
+      .ps-cover-presenter{font-size:1.15em;color:#fff;text-align:center;margin-top:8px;}
+      .ps-cover-role{font-size:1.1em;color:#AADDB0;text-align:center;}
+      .ps-cover-date{font-size:0.95em;color:#AADDB0;text-align:center;}
       .ps-cover-footer{height:8px;background:#ea580c;position:absolute;bottom:0;left:0;right:0;}
-      /* Tab bar */
-      .ps-tabbar{display:flex;background:#166534;height:44px;flex-shrink:0;}
-      .ps-tab{flex:1;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.78em;font-weight:600;letter-spacing:1.5px;position:relative;}
+      /* ── Tab bar ── */
+      .ps-tabbar{display:flex;background:#166534;height:48px;flex-shrink:0;}
+      .ps-tab{flex:1;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.88em;font-weight:600;letter-spacing:1.5px;position:relative;}
       .ps-tab-on{font-weight:900;}
       .ps-tab-on::after{content:'';position:absolute;bottom:0;left:0;right:0;height:4px;background:#ea580c;}
       .ps-orange-stripe{height:5px;background:#ea580c;flex-shrink:0;}
-      /* Title row */
-      .ps-titlerow{display:flex;align-items:center;justify-content:space-between;padding:8px 28px 4px;flex-shrink:0;}
-      .ps-title{font-size:1.45em;font-weight:700;color:#00843D;line-height:1.2;}
-      .ps-title-accent{width:56px;height:4px;background:#ea580c;margin-top:3px;}
-      .ps-logo{height:40px;max-width:160px;object-fit:contain;}
-      .ps-logo-text{font-size:1em;font-weight:900;color:#166534;}
-      .ps-pgnum{position:absolute;bottom:6px;right:14px;font-size:0.7em;color:#9CA3AF;font-weight:600;}
-      /* Body */
-      .ps-body{flex:1;overflow:hidden;padding:4px 28px 20px;display:flex;flex-direction:column;gap:6px;}
-      .ps-split{display:flex;flex-direction:row;gap:16px;flex:1;overflow:hidden;}
-      /* Section label */
-      .ps-slabel{font-size:0.75em;font-weight:800;color:#166534;letter-spacing:1px;flex-shrink:0;}
-      .ps-slabel-bar{width:32px;height:3px;background:#ea580c;margin-top:2px;}
-      .ps-section-tag{font-size:0.7em;font-weight:800;color:#ea580c;letter-spacing:1px;margin-bottom:4px;}
-      /* Tables */
+      /* ── Title row ── */
+      .ps-titlerow{display:flex;align-items:center;justify-content:space-between;padding:10px 32px 5px;flex-shrink:0;}
+      .ps-title{font-size:1.65em;font-weight:700;color:#00843D;line-height:1.2;}
+      .ps-title-accent{width:60px;height:4px;background:#ea580c;margin-top:4px;}
+      .ps-logo{height:44px;max-width:180px;object-fit:contain;}
+      .ps-logo-text{font-size:1.1em;font-weight:900;color:#166534;}
+      .ps-pgnum{position:absolute;bottom:7px;right:16px;font-size:0.78em;color:#9CA3AF;font-weight:600;}
+      /* ── Body ── */
+      .ps-body{flex:1;overflow:hidden;padding:6px 32px 22px;display:flex;flex-direction:column;gap:8px;}
+      .ps-split{display:flex;flex-direction:row;gap:18px;flex:1;overflow:hidden;}
+      /* ── Section label ── */
+      .ps-slabel{font-size:0.9em;font-weight:800;color:#166534;letter-spacing:1px;flex-shrink:0;}
+      .ps-slabel-bar{width:36px;height:3px;background:#ea580c;margin-top:3px;}
+      .ps-section-tag{font-size:0.85em;font-weight:800;color:#ea580c;letter-spacing:1px;margin-bottom:5px;}
+      /* ── Tables ── */
       .ps-tbl-wrap{overflow:hidden;flex:1;min-height:0;}
-      .ps-tbl{width:100%;border-collapse:collapse;font-size:0.79em;}
-      .ps-tbl thead th{color:#fff;padding:5px 8px;text-align:center;font-size:0.88em;font-weight:700;letter-spacing:.4px;white-space:nowrap;}
-      .ps-tbl tbody td{padding:4px 7px;color:#374151;border-bottom:1px solid #E5E7EB;white-space:nowrap;font-variant-numeric:tabular-nums;}
-      .ps-tbl tbody tr:first-child td{border-top:none;}
+      .ps-tbl{width:100%;border-collapse:collapse;font-size:0.95em;}
+      .ps-tbl thead th{color:#fff;padding:7px 10px;font-size:0.93em;font-weight:700;letter-spacing:.3px;white-space:nowrap;}
+      .ps-tbl tbody td{padding:5px 10px;color:#374151;border-bottom:1px solid #E5E7EB;white-space:nowrap;font-variant-numeric:tabular-nums;}
       .ps-tbl tbody tr.ps-alt td{background:#F9FAFB;}
       .ps-tbl tbody tr:hover td{background:#F0FDF4;}
-      /* Compact table mode for dense slides */
-      .ps-compact .ps-tbl{font-size:0.68em;}
-      .ps-compact .ps-tbl thead th{padding:3px 6px;font-size:0.86em;}
-      .ps-compact .ps-tbl tbody td{padding:2px 6px;}
-      /* KPI cards */
-      .ps-kpi-row{display:flex;gap:10px;flex-shrink:0;}
-      .ps-kpi-card{flex:1;border:2px solid;border-radius:4px;padding:8px 12px;min-width:0;}
-      .ps-kpi-label{font-size:0.65em;color:#6B7280;font-weight:600;letter-spacing:.5px;margin-bottom:3px;}
-      .ps-kpi-val{font-size:1.45em;font-weight:900;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-      /* Global KPI box */
-      .ps-global-kpi{width:180px;flex-shrink:0;border-radius:4px;padding:12px;text-align:center;}
-      .ps-gkpi-label{font-size:0.65em;color:#6B7280;font-weight:600;letter-spacing:.5px;}
-      .ps-gkpi-val{font-size:2.6em;font-weight:900;line-height:1.1;}
-      .ps-gkpi-status{font-size:0.78em;font-weight:700;margin-top:2px;}
-      .ps-gkpi-detail{font-size:0.68em;color:#6B7280;margin-top:6px;line-height:1.5;}
-      /* Region cards */
-      .ps-region-cards{display:flex;gap:10px;flex-shrink:0;margin-bottom:6px;}
-      .ps-region-card{flex:1;border-radius:4px;padding:10px 12px;}
-      .ps-reg-name{font-size:0.85em;font-weight:800;letter-spacing:.5px;}
-      .ps-reg-pct{font-size:2.2em;font-weight:900;line-height:1.1;text-align:center;margin:3px 0;}
-      .ps-reg-detail{font-size:0.68em;color:#6B7280;line-height:1.5;}
-      /* Exec overview */
-      .ps-exec-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12px;flex:1;}
-      .ps-exec-card{border-radius:4px;padding:16px 20px;}
-      .ps-exec-num{font-size:2.2em;font-weight:900;line-height:1;}
-      .ps-exec-name{font-size:1.1em;font-weight:800;margin:2px 0 6px;}
-      .ps-exec-desc{font-size:0.82em;color:#374151;line-height:1.5;}
-      /* Bar chart */
+      /* Compact mode for dense slides */
+      .ps-compact .ps-tbl{font-size:0.77em;}
+      .ps-compact .ps-tbl thead th{padding:4px 8px;}
+      .ps-compact .ps-tbl tbody td{padding:3px 8px;}
+      /* ── KPI cards ── */
+      .ps-kpi-row{display:flex;gap:12px;flex-shrink:0;}
+      .ps-kpi-card{flex:1;border:2px solid;border-radius:5px;padding:10px 14px;min-width:0;}
+      .ps-kpi-label{font-size:0.8em;color:#6B7280;font-weight:600;letter-spacing:.5px;margin-bottom:4px;}
+      .ps-kpi-val{font-size:1.95em;font-weight:900;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      /* ── Global KPI box ── */
+      .ps-global-kpi{width:190px;flex-shrink:0;border-radius:5px;padding:14px;text-align:center;}
+      .ps-gkpi-label{font-size:0.78em;color:#6B7280;font-weight:600;letter-spacing:.5px;}
+      .ps-gkpi-val{font-size:2.8em;font-weight:900;line-height:1.1;}
+      .ps-gkpi-status{font-size:0.9em;font-weight:700;margin-top:3px;}
+      .ps-gkpi-detail{font-size:0.8em;color:#6B7280;margin-top:8px;line-height:1.55;}
+      /* ── Region cards ── */
+      .ps-region-cards{display:flex;gap:12px;flex-shrink:0;margin-bottom:8px;}
+      .ps-region-card{flex:1;border-radius:5px;padding:12px 16px;}
+      .ps-reg-name{font-size:1.05em;font-weight:800;letter-spacing:.5px;}
+      .ps-reg-pct{font-size:2.7em;font-weight:900;line-height:1.1;text-align:center;margin:4px 0;}
+      .ps-reg-detail{font-size:0.85em;color:#6B7280;line-height:1.55;}
+      /* ── Executive overview ── */
+      .ps-exec-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:16px;flex:1;}
+      .ps-exec-card{border-radius:6px;padding:24px 30px;}
+      .ps-exec-num{font-size:3.4em;font-weight:900;line-height:1;}
+      .ps-exec-name{font-size:1.6em;font-weight:800;margin:4px 0 8px;}
+      .ps-exec-desc{font-size:1.08em;color:#374151;line-height:1.6;}
+      /* ── Bar chart — label sits directly above its bar ── */
       .ps-chart-wrap{display:flex;flex-direction:column;height:100%;}
-      .ps-chart-title{font-size:0.7em;color:#6B7280;margin-bottom:5px;text-align:center;}
-      .ps-bars{display:flex;align-items:flex-end;flex:1;gap:6px;border-bottom:2px solid #E5E7EB;padding-bottom:3px;}
-      .ps-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;height:100%;}
-      .ps-bar-val{font-size:0.6em;color:#166534;font-weight:700;margin-bottom:2px;}
-      .ps-bar-body{width:70%;background:#166534;border-radius:3px 3px 0 0;}
-      .ps-bar-lbl{font-size:0.6em;color:#6B7280;margin-top:3px;}
-      /* Insights */
-      .ps-insights{display:flex;flex-direction:column;gap:10px;padding-left:8px;}
-      .ps-insight-title{font-size:0.88em;font-weight:800;color:#00843D;margin-bottom:3px;}
-      .ps-insight-item{display:flex;gap:8px;align-items:flex-start;font-size:0.78em;color:#374151;line-height:1.45;}
-      .ps-insight-dot{width:4px;min-width:4px;height:100%;min-height:28px;border-radius:2px;margin-top:2px;}
-      /* Week cards */
-      .ps-week-cards{display:flex;gap:8px;flex-shrink:0;margin-bottom:6px;}
-      .ps-week-card{flex:1;border-radius:4px;padding:9px;text-align:center;}
-      .ps-wk-lbl{font-size:0.65em;color:#6B7280;margin-bottom:3px;}
-      .ps-wk-sales{font-size:1.3em;font-weight:900;}
-      .ps-wk-ads{font-size:0.68em;margin-top:2px;}
-      /* Dept comparison */
-      .ps-dept-header{background:#166534;color:#fff;padding:7px 12px;font-weight:800;font-size:0.88em;border-radius:3px 3px 0 0;letter-spacing:.5px;}
-      /* Insight banner */
-      .ps-insight-banner{background:#F0FDF4;border:1px solid #166534;border-radius:3px;padding:6px 12px;font-size:0.75em;color:#374151;flex-shrink:0;}
-      .ps-no-data{color:#9CA3AF;font-style:italic;font-size:0.85em;padding:12px 0;}
+      .ps-chart-title{font-size:0.85em;color:#6B7280;margin-bottom:6px;text-align:center;}
+      .ps-bars{display:flex;align-items:flex-end;flex:1;gap:8px;border-bottom:2px solid #E5E7EB;padding-bottom:0;}
+      .ps-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;height:100%;min-width:0;}
+      .ps-bar-inner{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;}
+      .ps-bar-body{width:72%;background:#166534;border-radius:3px 3px 0 0;position:relative;min-height:4px;}
+      .ps-bar-val{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:0.7em;color:#166534;font-weight:700;white-space:nowrap;padding-bottom:3px;}
+      .ps-bar-lbl{font-size:0.75em;color:#6B7280;margin-top:5px;text-align:center;}
+      /* ── Key insights ── */
+      .ps-insights{display:flex;flex-direction:column;gap:14px;padding-left:10px;}
+      .ps-insight-title{font-size:1.18em;font-weight:800;color:#00843D;margin-bottom:4px;}
+      .ps-insight-item{display:flex;gap:10px;align-items:flex-start;font-size:1.0em;color:#374151;line-height:1.5;}
+      .ps-insight-dot{width:5px;min-width:5px;height:100%;min-height:32px;border-radius:2px;margin-top:2px;}
+      /* ── Week cards ── */
+      .ps-week-cards{display:flex;gap:10px;flex-shrink:0;margin-bottom:8px;}
+      .ps-week-card{flex:1;border-radius:5px;padding:14px;text-align:center;}
+      .ps-wk-lbl{font-size:0.85em;color:#6B7280;margin-bottom:5px;}
+      .ps-wk-sales{font-size:1.9em;font-weight:900;}
+      .ps-wk-ads{font-size:0.9em;margin-top:4px;}
+      /* ── Dept comparison ── */
+      .ps-dept-header{background:#166534;color:#fff;padding:9px 14px;font-weight:800;font-size:1.05em;border-radius:4px 4px 0 0;letter-spacing:.5px;}
+      /* ── Insight banner ── */
+      .ps-insight-banner{background:#F0FDF4;border:1px solid #166534;border-radius:4px;padding:7px 14px;font-size:0.9em;color:#374151;flex-shrink:0;}
+      .ps-no-data{color:#9CA3AF;font-style:italic;font-size:0.92em;padding:14px 0;}
     `;
     document.head.appendChild(style);
   }
