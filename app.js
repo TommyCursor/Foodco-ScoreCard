@@ -4321,6 +4321,26 @@ window.presentReport = async function() {
   function numCell(v,col){ return {text:String(v||'—'),style:`text-align:right${col?`;color:${col}`:''}` }; }
   function pctCell(v){ const n=normPct(v); const col=n!=null?(n>=90?'#166534':n>=80?'#D97706':'#DC2626'):'#6B7280'; return {text:n!=null?`${n.toFixed(1)}%`:'—',style:`text-align:right;font-weight:700;color:${col}`}; }
 
+  // ── SVG Donut chart (r≈15.915 → circumference≈100, % values work directly) ──
+  function svgDonut(smP, rstP){
+    const sm=parseFloat(smP)||0, rst=parseFloat(rstP)||0;
+    return `<div style="display:flex;align-items:center;gap:18px">
+      <svg viewBox="0 0 36 36" width="120" height="120">
+        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#E5E7EB" stroke-width="5"/>
+        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#166534" stroke-width="5"
+          stroke-dasharray="${sm.toFixed(1)} ${(100-sm).toFixed(1)}" stroke-dashoffset="25"/>
+        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ea580c" stroke-width="5"
+          stroke-dasharray="${rst.toFixed(1)} ${(100-rst).toFixed(1)}" stroke-dashoffset="${(25+sm).toFixed(1)}"/>
+        <text x="18" y="16" text-anchor="middle" font-size="6.5" fill="#166534" font-weight="bold">${sm.toFixed(0)}%</text>
+        <text x="18" y="23" text-anchor="middle" font-size="4" fill="#6B7280">SM</text>
+      </svg>
+      <div style="font-size:0.9em;line-height:2.1">
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;background:#166534;border-radius:3px;flex-shrink:0;display:inline-block"></span><strong style="color:#166534">Supermarket</strong> &nbsp;${sm.toFixed(1)}%</div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;background:#ea580c;border-radius:3px;flex-shrink:0;display:inline-block"></span><strong style="color:#ea580c">Restaurant</strong> &nbsp;${rst.toFixed(1)}%</div>
+      </div>
+    </div>`;
+  }
+
   // ── Bar chart (CSS-based) — value label floats above each bar ────────────
   function barChart(labels,values,title){
     const max=Math.max(...values,0.01);
@@ -4395,30 +4415,35 @@ window.presentReport = async function() {
   // Slide 4: Core vs Other Business
   SLIDES.push(`<div class="ps-slide">
     ${slideHeader('REVENUE',`Core Business: Supermarket ${fmtBig(smJunV)}, Restaurant ${fmtBig(rstJunV)}`,4)}
-    <div class="ps-body ps-split" style="gap:24px">
-      <div style="flex:1.3">
-        <div class="ps-section-tag">CORE BUSINESS (Million)</div>
-        ${rovMonths.length?table(
-          ['Business',...rovMonths],
-          coreBiz.map(r=>{ const isT=/total/i.test(r[0]); return [
-            {text:r[0],style:isT?'font-weight:700':''},
-            ...rovMonths.map((_,ci)=>({text:rovIdx[ci]!=null?String(r[rovIdx[ci]]||'—'):String(r[ci+1]||'—'),style:`text-align:right${isT?';font-weight:700;background:#DCFCE7':''}`})),
-          ]; })
-        ):`<p class="ps-no-data">Data columns not detected</p>`}
-        ${totJunV?`<div class="ps-insight-banner"><strong>${fullMonth} Total: ${fmtBig(totJunV)}</strong> | Supermarket ${smPct||'—'}% | Restaurant ${rstPct||'—'}%</div>`:''}
+    <div class="ps-body" style="gap:10px">
+      <div class="ps-split" style="flex:1;gap:20px;min-height:0">
+        <div style="flex:1.3;display:flex;flex-direction:column;gap:6px;overflow:hidden">
+          <div class="ps-section-tag">CORE BUSINESS (Million)</div>
+          ${rovMonths.length?table(
+            ['Business',...rovMonths],
+            coreBiz.map(r=>{ const isT=/total/i.test(r[0]); return [
+              {text:r[0],style:isT?'font-weight:700':''},
+              ...rovMonths.map((_,ci)=>({text:rovIdx[ci]!=null?String(r[rovIdx[ci]]||'—'):String(r[ci+1]||'—'),style:`text-align:right${isT?';font-weight:700;background:#DCFCE7':''}`})),
+            ]; })
+          ):`<p class="ps-no-data">Data columns not detected</p>`}
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px;overflow:hidden">
+          <div class="ps-section-tag" style="color:#ea580c">OTHER BUSINESSES (Million)</div>
+          ${otherBiz.length?table(
+            ['Business','MAY','JUN','Change'],
+            otherBiz.map(r=>{
+              const mV=mayIdx>=0&&rovIdx[mayIdx]!=null?pN(r[rovIdx[mayIdx]]):pN(r[mayIdx+1]);
+              const jV=junIdx>=0&&rovIdx[junIdx]!=null?pN(r[rovIdx[junIdx]]):pN(r[junIdx+1]);
+              const chg=(mV&&jV&&mV!==0)?(jV-mV)/mV*100:null;
+              return [r[0],{text:mV!=null?String(mV):'—',style:'text-align:right'},{text:jV!=null?String(jV):'—',style:'text-align:right'},{text:chg!=null?`${chg>=0?'+':''}${chg.toFixed(1)}%`:'—',style:`text-align:right;font-weight:700;color:${chg!=null&&chg>=0?'#166534':'#DC2626'}`}];
+            }),
+            true
+          ):`<p class="ps-no-data">Other business data not available</p>`}
+        </div>
       </div>
-      <div style="flex:1">
-        <div class="ps-section-tag" style="color:#ea580c">OTHER BUSINESSES (Million)</div>
-        ${otherBiz.length?table(
-          ['Business','MAY','JUN','Change'],
-          otherBiz.map(r=>{
-            const mV=mayIdx>=0&&rovIdx[mayIdx]!=null?pN(r[rovIdx[mayIdx]]):pN(r[mayIdx+1]);
-            const jV=junIdx>=0&&rovIdx[junIdx]!=null?pN(r[rovIdx[junIdx]]):pN(r[junIdx+1]);
-            const chg=(mV&&jV&&mV!==0)?(jV-mV)/mV*100:null;
-            return [r[0],{text:mV!=null?String(mV):'—',style:'text-align:right'},{text:jV!=null?String(jV):'—',style:'text-align:right'},{text:chg!=null?`${chg>=0?'+':''}${chg.toFixed(1)}%`:'—',style:`text-align:right;font-weight:700;color:${chg!=null&&chg>=0?'#166534':'#DC2626'}`}];
-          }),
-          true
-        ):`<p class="ps-no-data">Other business data not available</p>`}
+      <div style="display:flex;align-items:center;gap:18px;flex-shrink:0;padding-top:4px">
+        ${smPct&&rstPct?svgDonut(smPct,rstPct):''}
+        ${totJunV?`<div class="ps-insight-banner" style="flex:1;margin:0"><strong>${fullMonth} Total Revenue: ${fmtBig(totJunV)}</strong> &nbsp;|&nbsp; Supermarket contributed <strong style="color:#166534">${smPct||'—'}%</strong> &nbsp;|&nbsp; Restaurant <strong style="color:#ea580c">${rstPct||'—'}%</strong> &nbsp;|&nbsp; All other business lines declined from May</div>`:''}
       </div>
     </div>
   </div>`);
