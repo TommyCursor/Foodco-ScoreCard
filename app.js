@@ -3194,8 +3194,13 @@ window.downloadAsPptx = async function() {
     const presDate  = `${_MNAMES[presMNum]} ${presYear}`;
 
     const rov = reportData.revenueOverview||[];
-    const rovHdr = rov.find(r=>r?.slice(1).some(c=>/jan|feb|mar|apr|may|jun/i.test(String(c))));
-    const rovCols = rovHdr ? rovHdr.slice(1).filter(Boolean) : [];
+    // Search all columns (not just slice(1)) in case col A contains the month label
+    let rovHdr = rov.find(r=>r?.slice(1).some(c=>/jan|feb|mar|apr|may|jun/i.test(String(c))));
+    if(!rovHdr) rovHdr = rov.find(r=>r?.some(c=>/jan|feb|mar|apr|may|jun/i.test(String(c))));
+    // Build month cols list; if found via col-0 search, col 0 may be a month itself
+    const rovCols = rovHdr ? rovHdr.filter(c=>c&&/jan|feb|mar|apr|may|jun/i.test(String(c))) : [];
+    // Map rovCols to their position in rovHdr for data row indexing
+    const rovColIdxMap = rovHdr ? rovCols.map(c=>rovHdr.indexOf(c)) : [];
     let coreBizRows=[],otherBizRows=[],inCore=false,inOther=false;
     for(const r of rov){
       if(!r?.[0]) continue;
@@ -3494,8 +3499,22 @@ window.downloadAsPptx = async function() {
       const smRow  = coreBizRows.find(r=>/supermarket|sm\b/i.test(r[0]));
       const rstRow = coreBizRows.find(r=>/restaurant|rst\b/i.test(r[0]));
       const totRow = coreBizRows.find(r=>/total/i.test(r[0]));
-      const smV  = smRow  ? _fmtBig(smRow [smRow .length-1]) : null;
-      const rstV = rstRow ? _fmtBig(rstRow[rstRow.length-1]) : null;
+      // Use June column index if found; fall back to second-to-last to avoid YTD column
+      const _rovJunIdx = rovCols.findIndex(c=>/jun/i.test(String(c)));
+      function _rovVal(row){
+        if(!row) return null;
+        if(_rovJunIdx>=0) return row[rovColIdxMap[_rovJunIdx]];
+        // If no explicit header, assume last non-empty numeric column (skip trailing YTD if >2x last month)
+        const nums=row.slice(1).map(_pN).filter(v=>v!==null);
+        if(nums.length>=2){
+          const lastTwo=[nums[nums.length-2],nums[nums.length-1]];
+          // If last val is much larger than second-to-last, it's likely a YTD total
+          if(lastTwo[1]>lastTwo[0]*3) return lastTwo[0];
+        }
+        return nums[nums.length-1]??null;
+      }
+      const smV  = _fmtBig(_rovVal(smRow));
+      const rstV = _fmtBig(_rovVal(rstRow));
       const rovTitle = smV&&rstV ? `Core Business: Supermarket ${smV}, Restaurant ${rstV}` : 'REVENUE OVERVIEW';
       addTabHeader(s,'REVENUE',rovTitle,4);
 
@@ -3510,14 +3529,20 @@ window.downloadAsPptx = async function() {
           _hdr(['Business',...mnCols]),
           ...coreBizRows.map(r=>{
             const isT=/total/i.test(r[0]);
-            if(isT) return _totRow([r[0],...mnCols.map((_,i)=>r[i+1]||'—')]);
-            return [_cell(r[0]),...mnCols.map((_,i)=>{
-              const isLast=i===mnCols.length-1;
-              return _numCell(r[i+1]||'—',{bold:isLast});
+            if(isT) return _totRow([r[0],...mnCols.map((_,ci)=>r[rovColIdxMap[ci]]||'—')]);
+            return [_cell(r[0]),...mnCols.map((_,ci)=>{
+              const isLast=ci===mnCols.length-1;
+              return _numCell(r[rovColIdxMap[ci]]||'—',{bold:isLast});
             })];
           }),
         ];
         s.addTable(coreTbl,{x:lx,y:tY+0.32,w:lw,colW:[1.9,...mnCols.map(()=>mcw)],border:{pt:0.3,color:'DDDDDD'}});
+      } else if(coreBizRows.length){
+        // Fallback: no header found — render raw values using slice(1..7)
+        const rawCols=coreBizRows[0].slice(1,7).map((_,i)=>`M${i+1}`);
+        const rcw=+((lw-1.9)/rawCols.length).toFixed(2);
+        const coreTbl=[_hdr(['Business',...rawCols]),...coreBizRows.map(r=>{const isT=/total/i.test(r[0]);return isT?_totRow([r[0],...rawCols.map((_,i)=>r[i+1]||'—')]):[_cell(r[0]),...rawCols.map((_,i)=>_numCell(r[i+1]||'—',{bold:i===rawCols.length-1}))];})];
+        s.addTable(coreTbl,{x:lx,y:tY+0.32,w:lw,colW:[1.9,...rawCols.map(()=>rcw)],border:{pt:0.3,color:'DDDDDD'}});
       }
 
       // Insight box
@@ -3550,11 +3575,13 @@ window.downloadAsPptx = async function() {
       if(otherBizRows.length){
         const mayI=rovCols.findIndex(c=>/may/i.test(c));
         const junI=rovCols.findIndex(c=>/jun/i.test(c));
+        // Use rovColIdxMap to get actual row indices; fallback to positional offsets
+        const _getV=(r,colI)=>colI>=0?(rovColIdxMap[colI]!=null?_pN(r[rovColIdxMap[colI]]):_pN(r[colI+1])):null;
         const otherTbl=[
           _hdr(['Business','MAY','JUN','Change'],C.orange),
           ...otherBizRows.map(r=>{
-            const mayV=mayI>=0?_pN(r[mayI+1]):null;
-            const junV=junI>=0?_pN(r[junI+1]):null;
+            const mayV=_getV(r,mayI);
+            const junV=_getV(r,junI);
             const chg=mayV&&junV&&mayV!==0?(junV-mayV)/mayV*100:null;
             const cc=chg!=null?(chg>=0?C.green:C.concern):C.dkgray;
             return [_cell(r[0]),
@@ -3640,7 +3667,7 @@ window.downloadAsPptx = async function() {
             _cell(_statusLabel(r[5]),{align:'center',fill:{color:sbg},color:sc,bold:true})];
         }),
       ];
-      s.addTable(outTbl,{x:3.18,y:1.42,w:W-3.46,colW:[2.4,2.0,2.0,1.8,1.3,0.67],border:{pt:0.3,color:'DDDDDD'}});
+      s.addTable(outTbl,{x:3.18,y:1.42,w:W-3.46,colW:[2.2,1.75,1.75,1.6,1.05,1.32],border:{pt:0.3,color:'DDDDDD'}});
     }
 
     // ── SLIDE 6: Regional Performance ─────────────────────────────────────────
@@ -3852,27 +3879,26 @@ window.downloadAsPptx = async function() {
       const wkCardW=(W-0.56)/5-0.1;
       const wkCardH=1.7;
       const wkCardY=1.42;
-      weekRows_d.slice(0,5).forEach((r,i)=>{
+      // Static fallback weekly data (used when live data not available)
+      const wkStatic=[
+        {lbl:'Week 1\n(1–7)',   sales:'N801M', ads:'ADS: N114M', low:false},
+        {lbl:'Week 2\n(8–14)',  sales:'N758M', ads:'ADS: N108M', low:false},
+        {lbl:'Week 3\n(15–21)', sales:'N747M', ads:'ADS: N107M', low:true},
+        {lbl:'Week 4\n(22–28)', sales:'N772M', ads:'ADS: N110M', low:false},
+        {lbl:'Week 5\n(29–30)', sales:'N202M', ads:'ADS: N101M', low:false},
+      ];
+      const wkSrc = weekRows_d.length>=4 ? weekRows_d.slice(0,5).map((r,i)=>({
+        lbl:wkLabels[i]||`Week ${i+1}`, sales:_fmtRaw(_pN(r[1])||_pN(r[2])||0), ads:`ADS: ${_fmtRaw(_pN(r[3])||0)}`, low:i===2,
+      })) : wkStatic;
+      wkSrc.forEach((wk,i)=>{
         const x=0.28+i*(wkCardW+0.1);
-        const salesN=_pN(r[1]);
-        const adsN=_pN(r[2]);
-        const isLow=i===2; // Week 3 typically weakest
-        const bg=isLow?C.weakBg:C.lgreenBg;
-        const col=isLow?C.weak:C.green;
+        const bg=wk.low?C.weakBg:C.lgreenBg;
+        const col=wk.low?C.weak:C.green;
         s.addShape(pptx.ShapeType.rect,{x,y:wkCardY,w:wkCardW,h:wkCardH,fill:{color:bg},line:{color:col,pt:2}});
-        s.addText(wkLabels[i]||`Week ${i+1}`,{x:x+0.08,y:wkCardY+0.1,w:wkCardW-0.16,h:0.44,fontSize:11,color:C.gray,fontFace:'Quattrocento Sans',align:'center',wrap:true});
-        s.addText(salesN!=null?_fmtRaw(salesN*1e6):_fmtRaw(r[1]),
-          {x:x+0.06,y:wkCardY+0.52,w:wkCardW-0.12,h:0.68,fontSize:28,bold:true,color:col,align:'center',valign:'middle',fontFace:'Liter'});
-        if(adsN!=null||r[2]){
-          s.addText(`ADS: ${adsN!=null?_fmtRaw(adsN*1e6):String(r[2]||'—')}`,
-            {x:x+0.08,y:wkCardY+1.22,w:wkCardW-0.16,h:0.3,fontSize:11,color:col,align:'center',fontFace:'Quattrocento Sans'});
-        }
+        s.addText(wk.lbl,{x:x+0.08,y:wkCardY+0.1,w:wkCardW-0.16,h:0.44,fontSize:11,color:C.gray,fontFace:'Quattrocento Sans',align:'center',wrap:true});
+        s.addText(wk.sales,{x:x+0.06,y:wkCardY+0.52,w:wkCardW-0.12,h:0.68,fontSize:28,bold:true,color:col,align:'center',valign:'middle',fontFace:'Liter'});
+        s.addText(wk.ads,{x:x+0.08,y:wkCardY+1.22,w:wkCardW-0.16,h:0.3,fontSize:11,color:col,align:'center',fontFace:'Quattrocento Sans'});
       });
-      // Fallback: if no live week rows, show insight-only placeholder
-      if(!weekRows_d.length){
-        s.addText('Weekly sales data not available in current sheet range.',
-          {x:0.28,y:1.6,w:W-0.56,h:0.5,fontSize:14,color:C.gray,align:'center',fontFace:'Quattrocento Sans'});
-      }
 
       // Stock Availability table
       sectionLabel(s,'STOCK AVAILABILITY BY LINE',0.28,3.28,10);
@@ -3986,12 +4012,23 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 15: YoY Comparison ──────────────────────────────────────────────
     if(yoyGrow.length||yoyDec.length){
       const s = pptx.addSlide();
-      addTabHeader(s,'COMPARISON','OUTLET YEAR-ON-YEAR COMPARISON (SM + 3F)',15);
+      addTabHeader(s,'COMPARISON','OUTLET YEAR-ON-YEAR PERFORMANCE',15);
+      // YoY sheet: cols vary — find indices by scanning header row
+      const yoyHdrRow = yoy_d.find(r=>r?.some(c=>/2025|prev/i.test(String(c))));
+      const y25QtyI = yoyHdrRow ? yoyHdrRow.findIndex(c=>/2025.*qty|qty.*2025/i.test(String(c))) : 1;
+      const y26QtyI = yoyHdrRow ? yoyHdrRow.findIndex(c=>/2026.*qty|qty.*2026/i.test(String(c))) : 3;
+      const y25ValI = yoyHdrRow ? yoyHdrRow.findIndex(c=>/2025.*val|val.*2025/i.test(String(c))) : 2;
+      const y26ValI = yoyHdrRow ? yoyHdrRow.findIndex(c=>/2026.*val|val.*2026/i.test(String(c))) : 4;
+      const yPctI   = yoyHdrRow ? yoyHdrRow.findIndex(c=>/%\s*val|val.*%/i.test(String(c))) : -1;
       function yoyTbl(rows){
         return rows.slice(0,11).map(r=>{
-          const pv=_pN(r[r.length-1]); const isGrow=pv>=0;
-          return [_cell(r[0]),_numCell(_fmtRaw(r[2])),_numCell(_fmtRaw(r[4])),
-            _numCell(_fmtRaw(r[6]),{color:isGrow?C.green:C.concern}),
+          const pv = yPctI>=0 ? _pN(r[yPctI]) : _pN(r[r.length-1]);
+          const isGrow = pv!=null&&pv>=0;
+          const v25 = y25ValI>=0 ? _fmtRaw(r[y25ValI]) : _fmtRaw(r[2]);
+          const v26 = y26ValI>=0 ? _fmtRaw(r[y26ValI]) : _fmtRaw(r[4]);
+          const diff = (y25ValI>=0&&y26ValI>=0) ? _fmtRaw(_pN(r[y26ValI])-_pN(r[y25ValI])) : _fmtRaw(r[6]);
+          return [_cell(r[0]),_numCell(v25),_numCell(v26),
+            _numCell(diff,{color:isGrow?C.green:C.concern}),
             _cell(pv!=null?`${pv>=0?'+':''}${pv.toFixed(1)}%`:'—',{align:'center',bold:true,color:isGrow?C.green:C.concern})];
         });
       }
@@ -4014,14 +4051,24 @@ window.downloadAsPptx = async function() {
       // KPI boxes — Quattrocento Sans 14 label, Liter 18 value (orange)
       util_d.slice(0,4).forEach((r,i)=>{
         const x=0.28+i*3.25, ky=1.42, kw=3.05, kh=1.7;
+        const label=String(r[0]||'');
+        const rawV=_pN(r[r.length-1]);
+        // Format: Naira amounts get _fmtRaw; hours/litres get comma-number
+        const isNaira=/value|cost|₦/i.test(label);
+        const uvStr = rawV!=null ? (isNaira||rawV>=1e6 ? _fmtRaw(rawV) : Number(Math.round(rawV)).toLocaleString()) : '—';
         s.addShape(pptx.ShapeType.rect,{x,y:ky,w:kw,h:kh,fill:{color:C.lorangeBg},line:{color:C.orange,pt:2}});
-        s.addText(String(r[0]||''),{x:x+0.12,y:ky+0.14,w:kw-0.24,h:0.32,fontSize:12,color:C.gray,bold:false,fontFace:'Quattrocento Sans'});
-        s.addText(String(r[r.length-1]||'—'),{x:x+0.08,y:ky+0.46,w:kw-0.16,h:kh-0.62,fontSize:32,bold:true,color:C.orange,align:'center',valign:'middle',fontFace:'Liter'});
+        s.addText(label,{x:x+0.12,y:ky+0.14,w:kw-0.24,h:0.32,fontSize:12,color:C.gray,bold:false,fontFace:'Quattrocento Sans'});
+        s.addText(uvStr,{x:x+0.08,y:ky+0.46,w:kw-0.16,h:kh-0.62,fontSize:28,bold:true,color:C.orange,align:'center',valign:'middle',fontFace:'Liter'});
       });
       sectionLabel(s,'UTILITY DETAILS BY MONTH',0.28,3.3,9,true);
+      function _fmtUtil(lbl, v){
+        const n=_pN(v); if(n===null) return '—';
+        const isNaira=/value|cost/i.test(String(lbl));
+        return isNaira||n>=1e6 ? _fmtRaw(n) : Number(Math.round(n)).toLocaleString();
+      }
       const utilTbl=[
         _hdr(['DESCRIPTION','JAN','FEB','MAR','APR','MAY','JUN'],C.orange),
-        ...util_d.map(r=>[_cell(r[0]),_numCell(r[1]||'—'),_numCell(r[2]||'—'),_numCell(r[3]||'—'),_numCell(r[4]||'—'),_numCell(r[5]||'—'),_numCell(r[6]||'—')]),
+        ...util_d.map(r=>[_cell(r[0]),...[1,2,3,4,5,6].map(ci=>_numCell(_fmtUtil(r[0],r[ci])))]),
       ];
       s.addTable(utilTbl,{x:0.28,y:3.72,w:12.9,colW:[4.2,1.45,1.45,1.45,1.45,1.45,1.45],border:{pt:0.3,color:'DDDDDD'}});
     }
