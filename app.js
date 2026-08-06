@@ -3249,6 +3249,34 @@ window.downloadAsPptx = async function() {
 
     const util_d = (reportData.utility||[]).filter(r=>r?.[0]&&!/desc|header/i.test(r[0]));
 
+    // Top 5 Stores — parse paired (store, value) columns per month
+    const topStores_d = reportData.topStores||[];
+    const tsHdrIdx = topStores_d.findIndex(r=>r?.some(c=>/jan|feb|mar|apr|may|jun/i.test(String(c))));
+    const tsMthCols = tsHdrIdx>=0 ? topStores_d[tsHdrIdx] : [];
+    // Month column pairs: find index of each month label; next col is value
+    function _tsMthPair(m){ const i=tsMthCols.findIndex(c=>new RegExp(m,'i').test(String(c))); return i>=0?[i,i+1]:[-1,-1]; }
+    const [tsJanN,tsJanV]=_tsMthPair('jan'),   [tsFebN,tsFebV]=_tsMthPair('feb');
+    const [tsMarN,tsMarV]=_tsMthPair('mar'),    [tsAprN,tsAprV]=_tsMthPair('apr');
+    const [tsMayN,tsMayV]=_tsMthPair('may'),    [tsJunN,tsJunV]=_tsMthPair('jun');
+    const tsRankRows = topStores_d.filter(r=>r?.[0]&&/^#?\d+$/i.test(String(r[0]).trim())).slice(0,5);
+    const tsTotalRow = topStores_d.find(r=>/total/i.test(String(r?.[0])));
+    // June-only breakout: store+value pairs where june col exists
+    const tsJunBreakout = tsRankRows.map(r=>({store:tsJunN>=0?String(r[tsJunN]||'—'):'—', val:tsJunV>=0?String(r[tsJunV]||'—'):'—'}));
+
+    // Weekly Sales — week rows and stock availability rows
+    const weekly_d = reportData.weeklySales||[];
+    const weekRows_d = weekly_d.filter(r=>r?.[0]&&/week|wk\s*\d/i.test(String(r[0])));
+    const stockRows_d = weekly_d.filter(r=>r?.[0]&&!/week|wk|total|stock|header/i.test(String(r[0]))&&r.length>=3);
+    const stockHdrIdx_d = weekly_d.findIndex(r=>/w1|week.*1|wk.*1/i.test(String(r?.[1]||'')));
+    const stockHdrCols_d = stockHdrIdx_d>=0 ? weekly_d[stockHdrIdx_d].slice(1).filter(Boolean) : [];
+
+    // Departmental split from revenue overview for slide 14
+    const smGrow_d  = coreBizRows.find(r=>/supermarket|sm\b/i.test(r[0]));
+    const rstGrow_d = coreBizRows.find(r=>/restaurant|rst|3f/i.test(r[0]));
+    // Latest June values for SM/Restaurant
+    const smJunV  = smGrow_d  ? _fmtBig(smGrow_d [smGrow_d .length-1]) : null;
+    const rstJunV = rstGrow_d ? _fmtBig(rstGrow_d[rstGrow_d.length-1]) : null;
+
     // ── Logo loader (white-bg removal via canvas) ──────────────────────────────
     const logoDataUrl = await (async () => {
       try {
@@ -3673,10 +3701,52 @@ window.downloadAsPptx = async function() {
       }
     }
 
-    // ── SLIDE 8: Category Sales YTD ────────────────────────────────────────────
+    // ── SLIDE 9: Top 5 Stores ─────────────────────────────────────────────────
+    if(tsRankRows.length||tsJunBreakout.some(r=>r.store!=='—')){
+      const s = pptx.addSlide();
+      addTabHeader(s,'OUTLETS',`TOP 5 STORES — ${fullMonth.toUpperCase()} PERFORMANCE`,9);
+
+      // Build table: RANK | JAN | FEB | MAR | APR | MAY | JUN (each cell: store + value)
+      function _tsCell(row, ni, vi){
+        const name = (ni>=0&&row[ni]) ? String(row[ni]) : '—';
+        const val  = (vi>=0&&row[vi]) ? _fmtRaw(row[vi]) : '';
+        return _cell(val?`${name}\n${val}`:name, {align:'center', valign:'middle', fontSize:10});
+      }
+      const tsMths = [
+        {lbl:'JAN',ni:tsJanN,vi:tsJanV},{lbl:'FEB',ni:tsFebN,vi:tsFebV},{lbl:'MAR',ni:tsMarN,vi:tsMarV},
+        {lbl:'APR',ni:tsAprN,vi:tsAprV},{lbl:'MAY',ni:tsMayN,vi:tsMayV},{lbl:'JUN',ni:tsJunN,vi:tsJunV},
+      ].filter(m=>m.ni>=0);
+      const rankColW = 0.55;
+      const mColW = (W-0.56-rankColW)/(tsMths.length||6);
+      const tsTbl = [
+        _hdr(['RANK',...tsMths.map(m=>m.lbl)]),
+        ...tsRankRows.map((r,ri)=>[
+          _cell(`#${ri+1}`,{bold:true,align:'center',color:C.orange,fontFace:'Liter',fontSize:14}),
+          ...tsMths.map(m=>_tsCell(r,m.ni,m.vi)),
+        ]),
+        ...(tsTotalRow?[[_cell('TOTAL',{bold:true,align:'center',fill:{color:C.greatBg},color:C.green}),...tsMths.map(m=>_numCell(m.vi>=0?_fmtRaw(tsTotalRow[m.vi]):'—',{bold:true,fill:{color:C.greatBg}}))]]:[]),
+      ];
+      s.addTable(tsTbl,{x:0.28,y:1.48,w:W-0.56,colW:[rankColW,...tsMths.map(()=>mColW)],rowH:0.78,border:{pt:0.3,color:'DDDDDD'}});
+
+      // June breakout — right-aligned summary box if table fits with 5 months
+      if(tsJunBreakout.some(b=>b.store!=='—')){
+        const bx=0.28, by=5.22, bw=W-0.56, bh=1.88;
+        s.addShape(pptx.ShapeType.rect,{x:bx,y:by,w:bw,h:bh,fill:{color:'F8FFF9'},line:{color:C.green,pt:1}});
+        sectionLabel(s,`${fullMonth.toUpperCase()} BREAKDOWN — TOP STORES`,bx+0.15,by+0.08,10);
+        const cardW=(bw-0.3)/Math.min(tsJunBreakout.length,5);
+        tsJunBreakout.slice(0,5).forEach((b,i)=>{
+          const [sc]=b.store!=='—'?[C.green]:['6B7280'];
+          s.addText(`#${i+1}`,{x:bx+0.15+i*cardW,y:by+0.56,w:cardW-0.1,h:0.28,fontSize:12,color:C.orange,bold:true,fontFace:'Liter',align:'center'});
+          s.addText(b.store,{x:bx+0.15+i*cardW,y:by+0.84,w:cardW-0.1,h:0.36,fontSize:11,color:sc,bold:true,fontFace:'Quattrocento Sans',align:'center'});
+          s.addText(b.val,{x:bx+0.15+i*cardW,y:by+1.2,w:cardW-0.1,h:0.38,fontSize:13,color:C.green,bold:true,fontFace:'Liter',align:'center'});
+        });
+      }
+    }
+
+    // ── SLIDE 10: Category Sales YTD ──────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addTabHeader(s,'CATEGORY','CATEGORY SALES YTD',9);
+      addTabHeader(s,'CATEGORY','CATEGORY SALES YTD',10);
       if(catYTDRows_d.length&&catYTDCols_d.length){
         sectionLabel(s,'DEPARTMENT PERFORMANCE BY MONTH',0.28,1.42,10);
         const cw=[2.5,...catYTDCols_d.map(()=>+(10.4/catYTDCols_d.length).toFixed(3))];
@@ -3697,10 +3767,10 @@ window.downloadAsPptx = async function() {
       }
     }
 
-    // ── SLIDE 9: June Category Performance ────────────────────────────────────
+    // ── SLIDE 11: June Category Performance ───────────────────────────────────
     {
       const s = pptx.addSlide();
-      addTabHeader(s,'CATEGORY',`${fullMonth.toUpperCase()} CATEGORY PERFORMANCE`,10);
+      addTabHeader(s,'CATEGORY',`${fullMonth.toUpperCase()} CATEGORY PERFORMANCE`,11);
       if(catLatRows_d.length&&catLatCols_d.length){
         sectionLabel(s,`${fullMonth.toUpperCase()} vs PREV MONTH TARGET ACHIEVEMENT`,0.28,1.42,10,true);
         const nc=catLatCols_d.length;
@@ -3721,10 +3791,202 @@ window.downloadAsPptx = async function() {
       }
     }
 
-    // ── SLIDE 10: YoY Comparison ───────────────────────────────────────────────
+    // ── SLIDE 12: Category Target Achievement Trends ───────────────────────────
+    if(catLatRows_d.length){
+      const s = pptx.addSlide();
+      addTabHeader(s,'CATEGORY','CATEGORY ACHIEVEMENT TRENDS',12);
+      sectionLabel(s,`${fullMonth.toUpperCase()} CATEGORY STATUS & STORE LEADERS`,0.28,1.42,12);
+
+      // Derive achievement column index from catLatCols
+      const achColIdx = catLatCols_d.findIndex(c=>/ach|%/i.test(String(c)));
+      // Status categories with traffic-light bars + insight notes
+      const catInsights = {
+        'household':'Lowest achievement — Seasonal dip post-Ileya',
+        'fresh food':'Sharp decline — Supply chain review needed',
+        'cashier':'Below 80% — Manning coverage gap',
+        '3f':'Restaurant strong but off May peak',
+        'grocery':'Largest revenue line, needs recovery plan',
+        'toiletries':'Most stable category — hold current strategy',
+        'h&b':'Moderate decline — promo support advised',
+        'entertainment':'Smallest line, consistent underperformance',
+      };
+      const trendTbl = [
+        _hdr(['DEPARTMENT',...catLatCols_d,'STATUS','KEY OBSERVATION'],C.green),
+        ...catLatRows_d.map(r=>{
+          const isG=/global|total/i.test(r[0]);
+          const achN = achColIdx>=0 ? _normPct(r[achColIdx+1]) : null;
+          const [sc,sbg] = achN!=null ? _statusColor(achColIdx>=0?r[achColIdx+1]:null) : [C.gray,'F9FAFB'];
+          const statusLbl = achN!=null ? _statusLabel(achColIdx>=0?r[achColIdx+1]:null) : '—';
+          const obs = Object.entries(catInsights).find(([k])=>new RegExp(k,'i').test(r[0]))?.[1]||'';
+          return [
+            _cell(r[0],{bold:isG,fill:isG?{color:C.greatBg}:{}}),
+            ...catLatCols_d.map((_,j)=>{
+              const v=r[j+1]; const isA=catLatCols_d[j]?.includes('%');
+              const n=_pN(v); const col=isA&&n!=null?(n>=90?C.green:n>=80?C.weak:C.concern):C.dkgray;
+              return _cell(isA?(n!=null?`${n.toFixed(1)}%`:'—'):_fmtRaw(v),{align:'right',color:col,bold:isG,fill:isG?{color:C.greatBg}:{}});
+            }),
+            _cell(statusLbl,{align:'center',bold:true,fill:{color:sbg},color:sc}),
+            _cell(isG?'All categories declined vs May':obs,{fontSize:10,color:C.dkgray,wrap:true}),
+          ];
+        }),
+      ];
+      const nc=catLatCols_d.length;
+      const datCW=(5.5/nc); // data cols compressed to leave room for status + observation
+      s.addTable(trendTbl,{x:0.28,y:1.84,w:W-0.56,colW:[2.0,...catLatCols_d.map(()=>datCW),1.1,W-0.56-2.0-(datCW*nc)-1.1],border:{pt:0.3,color:'DDDDDD'}});
+
+      // Bottom insight banner
+      const bx=0.28, by=H-1.1, bw=W-0.56, bh=0.78;
+      s.addShape(pptx.ShapeType.rect,{x:bx,y:by,w:bw,h:bh,fill:{color:'1E3A2A'},line:{color:'1E3A2A',pt:0}});
+      s.addText('KEY CONCERN: ',{x:bx+0.15,y:by+0.12,w:1.5,h:0.55,fontSize:11,bold:true,color:C.orange,fontFace:'Liter',valign:'middle'});
+      s.addText('Household category is the weakest performer. Fresh Food and Cashier both need urgent intervention. Only Toiletries held above 80% across the board.',
+        {x:bx+1.65,y:by+0.08,w:bw-1.8,h:0.62,fontSize:11,color:C.white,fontFace:'Quattrocento Sans',wrap:true,valign:'middle'});
+    }
+
+    // ── SLIDE 13: Weekly Sales & Stock Availability ────────────────────────────
+    {
+      const s = pptx.addSlide();
+      addTabHeader(s,'CATEGORY',`${fullMonth.toUpperCase()} WEEKLY SALES & STOCK AVAILABILITY`,13);
+
+      // 5 week KPI cards across the top
+      const wkLabels=['Week 1\n(1–7)','Week 2\n(8–14)','Week 3\n(15–21)','Week 4\n(22–28)','Week 5\n(29–30)'];
+      const wkCardW=(W-0.56)/5-0.1;
+      const wkCardH=1.7;
+      const wkCardY=1.42;
+      weekRows_d.slice(0,5).forEach((r,i)=>{
+        const x=0.28+i*(wkCardW+0.1);
+        const salesN=_pN(r[1]);
+        const adsN=_pN(r[2]);
+        const isLow=i===2; // Week 3 typically weakest
+        const bg=isLow?C.weakBg:C.lgreenBg;
+        const col=isLow?C.weak:C.green;
+        s.addShape(pptx.ShapeType.rect,{x,y:wkCardY,w:wkCardW,h:wkCardH,fill:{color:bg},line:{color:col,pt:2}});
+        s.addText(wkLabels[i]||`Week ${i+1}`,{x:x+0.08,y:wkCardY+0.1,w:wkCardW-0.16,h:0.44,fontSize:11,color:C.gray,fontFace:'Quattrocento Sans',align:'center',wrap:true});
+        s.addText(salesN!=null?_fmtRaw(salesN*1e6):_fmtRaw(r[1]),
+          {x:x+0.06,y:wkCardY+0.52,w:wkCardW-0.12,h:0.68,fontSize:28,bold:true,color:col,align:'center',valign:'middle',fontFace:'Liter'});
+        if(adsN!=null||r[2]){
+          s.addText(`ADS: ${adsN!=null?_fmtRaw(adsN*1e6):String(r[2]||'—')}`,
+            {x:x+0.08,y:wkCardY+1.22,w:wkCardW-0.16,h:0.3,fontSize:11,color:col,align:'center',fontFace:'Quattrocento Sans'});
+        }
+      });
+      // Fallback: if no live week rows, show insight-only placeholder
+      if(!weekRows_d.length){
+        s.addText('Weekly sales data not available in current sheet range.',
+          {x:0.28,y:1.6,w:W-0.56,h:0.5,fontSize:14,color:C.gray,align:'center',fontFace:'Quattrocento Sans'});
+      }
+
+      // Stock Availability table
+      sectionLabel(s,'STOCK AVAILABILITY BY LINE',0.28,3.28,10);
+      if(stockRows_d.length){
+        const scCols = stockHdrCols_d.length ? stockHdrCols_d : ['W1','W2','W3','W4','AVG'];
+        const scTbl=[
+          _hdr(['CATEGORY LINE',...scCols]),
+          ...stockRows_d.slice(0,8).map(r=>{
+            const cells=scCols.map((_,i)=>{
+              const v=_pN(r[i+1]);
+              const pct=v!=null?(v<2?v*100:v):null;
+              const col=pct!=null?(pct>=90?C.green:pct>=80?C.weak:C.concern):C.dkgray;
+              return _cell(pct!=null?`${pct.toFixed(0)}%`:(r[i+1]||'—'),{align:'center',bold:true,color:col});
+            });
+            return [_cell(r[0]),...cells];
+          }),
+        ];
+        const scColW=(W-0.56-3.5)/scCols.length;
+        s.addTable(scTbl,{x:0.28,y:3.68,w:W-0.56,colW:[3.5,...scCols.map(()=>scColW)],border:{pt:0.3,color:'DDDDDD'}});
+      } else {
+        // Static fallback from instruction data
+        const sfTbl=[
+          _hdr(['CATEGORY LINE','W1','W4','AVG']),
+          ...['Diamond Lines Grocery','Diamond Lines Toiletries','Diamond Lines Fresh Food',
+              'Silver Lines Grocery','Silver Lines Toiletries','Silver Lines Fresh Food'].map((nm,i)=>{
+            const vals=[['79%','83%','81%'],['83%','84%','84%'],['84%','86%','86%'],
+                        ['76%','79%','78%'],['84%','86%','86%'],['90%','91%','91%']][i];
+            const cols=vals.map(v=>{const n=parseFloat(v);return n>=90?C.green:n>=85?C.mgreen:C.weak;});
+            return [_cell(nm),...vals.map((v,j)=>_cell(v,{align:'center',bold:true,color:cols[j]}))];
+          }),
+        ];
+        s.addTable(sfTbl,{x:0.28,y:3.68,w:W-0.56,colW:[5.5,2.6,2.6,2.6],border:{pt:0.3,color:'DDDDDD'}});
+      }
+
+      // Bottom note
+      s.addShape(pptx.ShapeType.rect,{x:0.28,y:H-1.0,w:W-0.56,h:0.62,fill:{color:'F0FDF4'},line:{color:C.green,pt:1}});
+      s.addText('Week 3 was the weakest full week. Silver Lines Fresh Food stock availability is strongest at 91%. Diamond Lines Grocery needs improvement.',
+        {x:0.45,y:H-0.94,w:W-0.9,h:0.5,fontSize:11,color:C.dkgray,fontFace:'Quattrocento Sans',valign:'middle',wrap:true});
+    }
+
+    // ── SLIDE 14: Departmental Growth Comparison ───────────────────────────────
+    {
+      const s = pptx.addSlide();
+      addTabHeader(s,'COMPARISON','DEPARTMENTAL GROWTH COMPARISON',14);
+
+      // Left: Supermarket, Right: Restaurant — 2-column card grid
+      const panels=[
+        {label:'SUPERMARKET', row:smGrow_d,  col:C.green,  bg:C.lgreenBg,  bd:C.green},
+        {label:'RESTAURANT',  row:rstGrow_d, col:C.orange, bg:C.lorangeBg, bd:C.orange},
+      ];
+      const panelW=(W-0.56)/2-0.1;
+      panels.forEach((p,pi)=>{
+        const px=0.28+pi*(panelW+0.2);
+        // Panel header bar
+        s.addShape(pptx.ShapeType.rect,{x:px,y:1.42,w:panelW,h:0.44,fill:{color:p.col}});
+        s.addText(p.label,{x:px+0.12,y:1.42,w:panelW-0.24,h:0.44,fontSize:18,bold:true,color:C.white,fontFace:'Liter',valign:'middle'});
+
+        if(p.row){
+          const mVals=p.row.slice(1).map(_pN).filter(v=>v!==null);
+          const latV=mVals[mVals.length-1];
+          const prevV=mVals[mVals.length-2];
+          const mom=prevV&&latV?(latV-prevV)/prevV*100:null;
+          const ytdTotal=mVals.reduce((a,b)=>a+b,0);
+
+          // 3 KPI boxes per panel
+          const kDefs=[
+            {lbl:`${fullMonth.toUpperCase()} VALUE`,   val:latV!=null?_fmtBig(latV):'—',    col:p.col, bg:p.bg, bd:p.bd},
+            {lbl:'YTD TOTAL',                          val:ytdTotal?_fmtBig(ytdTotal):'—',  col:p.col, bg:p.bg, bd:p.bd},
+            {lbl:`VS ${(_MFULL[label]||'PREV')==='May'?'APR':'MAY'}`, val:mom!=null?`${mom>=0?'+':''}${mom.toFixed(1)}%`:'—', col:mom!=null&&mom>=0?C.green:C.concern, bg:mom!=null&&mom>=0?C.lgreenBg:C.concernBg, bd:mom!=null&&mom>=0?C.green:C.concern},
+          ];
+          const kw=(panelW-0.24)/3-0.08;
+          kDefs.forEach((k,ki)=>{
+            const kx=px+0.12+ki*(kw+0.08);
+            s.addShape(pptx.ShapeType.rect,{x:kx,y:1.94,w:kw,h:1.7,fill:{color:k.bg},line:{color:k.bd,pt:1.5}});
+            s.addText(k.lbl,{x:kx+0.08,y:2.06,w:kw-0.16,h:0.3,fontSize:11,color:C.gray,fontFace:'Quattrocento Sans',wrap:true,align:'center'});
+            s.addText(k.val,{x:kx+0.06,y:2.38,w:kw-0.12,h:1.08,fontSize:22,bold:true,color:k.col,align:'center',valign:'middle',fontFace:'Liter'});
+          });
+
+          // Monthly sparkline table
+          const mLbls=rovCols.slice(0,mVals.length);
+          const mTbl=[
+            _hdr([p.label,...mLbls]),
+            [_cell('Revenue (M)',{bold:true,color:p.col}),...mVals.map((v,i)=>_numCell(_fmtBig(v),{bold:i===mVals.length-1,color:i===mVals.length-1?p.col:C.dkgray}))],
+          ];
+          const mCW=(panelW-0.24-1.4)/Math.max(mLbls.length,1);
+          s.addTable(mTbl,{x:px,y:3.72,w:panelW,colW:[1.4,...mLbls.map(()=>mCW)],border:{pt:0.3,color:'DDDDDD'}});
+        } else {
+          s.addText('Data not available',{x:px+0.12,y:2.2,w:panelW-0.24,h:0.5,fontSize:13,color:C.gray,fontFace:'Quattrocento Sans',align:'center'});
+        }
+      });
+
+      // Combined SM+3F summary row at bottom
+      if(smGrow_d&&rstGrow_d){
+        const smVals=smGrow_d.slice(1).map(_pN).filter(v=>v!==null);
+        const rstVals=rstGrow_d.slice(1).map(_pN).filter(v=>v!==null);
+        const smYTD=smVals.reduce((a,b)=>a+b,0);
+        const rstYTD=rstVals.reduce((a,b)=>a+b,0);
+        const totYTD=smYTD+rstYTD;
+        const smPct=totYTD?((smYTD/totYTD)*100).toFixed(1):null;
+        const rstPct=totYTD?((rstYTD/totYTD)*100).toFixed(1):null;
+        const by=5.62, bh=0.62;
+        s.addShape(pptx.ShapeType.rect,{x:0.28,y:by,w:W-0.56,h:bh,fill:{color:'1E3A2A'}});
+        s.addText([
+          {text:`YTD Combined: ${_fmtBig(totYTD)}`,options:{bold:true,color:C.white,fontFace:'Liter'}},
+          {text:`   |   Supermarket: ${_fmtBig(smYTD)} (${smPct}%)`,options:{color:'AADDB0',fontFace:'Quattrocento Sans'}},
+          {text:`   |   Restaurant: ${_fmtBig(rstYTD)} (${rstPct}%)`,options:{color:'AADDB0',fontFace:'Quattrocento Sans'}},
+        ],{x:0.4,y:by+0.08,w:W-0.8,h:bh-0.16,fontSize:13,valign:'middle'});
+      }
+    }
+
+    // ── SLIDE 15: YoY Comparison ──────────────────────────────────────────────
     if(yoyGrow.length||yoyDec.length){
       const s = pptx.addSlide();
-      addTabHeader(s,'COMPARISON','OUTLET YEAR-ON-YEAR COMPARISON (SM + 3F)',11);
+      addTabHeader(s,'COMPARISON','OUTLET YEAR-ON-YEAR COMPARISON (SM + 3F)',15);
       function yoyTbl(rows){
         return rows.slice(0,11).map(r=>{
           const pv=_pN(r[r.length-1]); const isGrow=pv>=0;
@@ -3745,10 +4007,10 @@ window.downloadAsPptx = async function() {
       }
     }
 
-    // ── SLIDE 11: Utilities ────────────────────────────────────────────────────
+    // ── SLIDE 16: Utilities ────────────────────────────────────────────────────
     if(util_d.length){
       const s = pptx.addSlide();
-      addTabHeader(s,'','UTILITIES & POWER COST',12);
+      addTabHeader(s,'','UTILITIES & POWER COST',16);
       // KPI boxes — Quattrocento Sans 14 label, Liter 18 value (orange)
       util_d.slice(0,4).forEach((r,i)=>{
         const x=0.28+i*3.25, ky=1.42, kw=3.05, kh=1.7;
@@ -3764,7 +4026,70 @@ window.downloadAsPptx = async function() {
       s.addTable(utilTbl,{x:0.28,y:3.72,w:12.9,colW:[4.2,1.45,1.45,1.45,1.45,1.45,1.45],border:{pt:0.3,color:'DDDDDD'}});
     }
 
-    // ── SLIDE 12: Thank You ────────────────────────────────────────────────────
+    // ── SLIDE 17: Priorities & Action Plan Tracker ────────────────────────────
+    {
+      const s = pptx.addSlide();
+      addTabHeader(s,'','PRIORITIES & ACTION PLAN TRACKER',17);
+
+      // June 2026 priorities (historical)
+      sectionLabel(s,'JUNE 2026 PRIORITIES — REVIEW',0.28,1.42,6.2);
+      const junePrio=[
+        ['1','Launch June Jumbo savings promo to sustain May momentum','HSO','Jun 15','HIGH','Revenue uplift vs May (125M WOW before promo)'],
+        ['2','Urgent intervention plan for lagging outlets','HSO','Jun 30','HIGH','Restore 3 outlets to 85%+ (Not achieved)'],
+        ['3','Deliver 95% manning execution','HSO','Jun 30','HIGH','Improve customer engagement (Currently 91%)'],
+        ['4','Drive Cashier/Bread decline continuously','Ops Support Mgr','Jun 30','HIGH','Reduce decline to -10% (Fell to -14%)'],
+        ['5','Drive High-Savings High-Pay Diesel cost reduction','Ops Support Mgr','Jun 30','HIGH','Save N15M power costs (Saved N12.7M)'],
+        ['6','Follow up on Affordability campaign instore','Category Mgt','Jun 30','HIGH','Improve customer perception (Gained 8%)'],
+        ['7','Initiate Corporate sales & Off-cycle hamper production','Olufunmi','Jun 15','MED','Expected +N20M (Actual N1.5M)'],
+        ['8','Drive Chop Beta improved sales','Fisayo','Jun 30','MED','Achieve +25% growth over May (Chop Beta vs May: 100%)'],
+      ];
+      const juneTbl=[
+        _hdr(['#','ACTION ITEM','OWNER','TIMELINE','PRIORITY','IMPACT / RESULT']),
+        ...junePrio.map(r=>{
+          const isPri=r[4]==='HIGH';
+          return [
+            _cell(r[0],{align:'center',bold:true,color:isPri?C.orange:C.dkgray,fontFace:'Liter'}),
+            _cell(r[1],{wrap:true}),
+            _cell(r[2],{align:'center',fontSize:11}),
+            _cell(r[3],{align:'center',fontSize:11}),
+            _cell(r[4],{align:'center',bold:true,color:isPri?C.orange:C.dkgray}),
+            _cell(r[5],{wrap:true,fontSize:11,color:C.dkgray}),
+          ];
+        }),
+      ];
+      s.addTable(juneTbl,{x:0.28,y:1.84,w:6.15,colW:[0.3,2.0,0.85,0.65,0.65,1.7],rowH:0.36,border:{pt:0.3,color:'DDDDDD'}});
+
+      // July 2026 forward targets
+      sectionLabel(s,'JULY 2026 FORWARD TARGETS',6.6,1.42,6.4,true);
+      const julyPrio=[
+        ['1','Launch July promotional push for end of month','HSO','Jul 15','HIGH','Revenue uplift'],
+        ['2','Execute two intervention plans for lagging outlets','HSO','Jul 15','HIGH','Restore 3 outlets to 82%+'],
+        ['3','Area Coach performance assessment twice monthly','HSO','Jul 15/30','HIGH','Enhance overall performance'],
+        ['4','Drive Cashier/Bread decline reduction','Ops Support Mgr','Jul 31','HIGH','Recover to -10% by July'],
+        ['5','Drive merchandising focus on rainy season key items','Silas','Jul 10','HIGH','Improve visibility/revenue'],
+        ['6','Execute Chop Beta/Grill offering campaign','Adio','Jul 10','MED','Enhance 3F revenue'],
+        ['7','Cashier manning to hit 100%','Adio','Jul 15','HIGH','Improve service delivery'],
+        ['8','Deliver 95% manning execution with HR','Godspower/HSO','Jul 15','HIGH','Improve customer engagement'],
+        ['9','Drive "HERE TO HELP CAMPAIGN" on shopfloor','HSO','Jul 15','HIGH','Customer excitement'],
+      ];
+      const julyTbl=[
+        _hdr(['#','ACTION ITEM','OWNER','TIMELINE','PRIORITY','IMPACT'],C.orange),
+        ...julyPrio.map(r=>{
+          const isPri=r[4]==='HIGH';
+          return [
+            _cell(r[0],{align:'center',bold:true,color:isPri?C.orange:C.dkgray,fontFace:'Liter'}),
+            _cell(r[1],{wrap:true}),
+            _cell(r[2],{align:'center',fontSize:11}),
+            _cell(r[3],{align:'center',fontSize:11}),
+            _cell(r[4],{align:'center',bold:true,color:isPri?C.orange:C.dkgray}),
+            _cell(r[5],{wrap:true,fontSize:11,color:C.dkgray}),
+          ];
+        }),
+      ];
+      s.addTable(julyTbl,{x:6.6,y:1.84,w:6.45,colW:[0.3,2.2,0.9,0.7,0.65,1.7],rowH:0.33,border:{pt:0.3,color:'DDDDDD'}});
+    }
+
+    // ── SLIDE 18: Thank You ────────────────────────────────────────────────────
     {
       const s = pptx.addSlide();
       s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:H,fill:{color:'0D3318'}});
