@@ -4168,6 +4168,642 @@ window.downloadAsPptx = async function() {
   }
 };
 
+// ── Browser Presentation Mode ─────────────────────────────────────────────────
+window.presentReport = function() {
+  const data = window._lastReportData;
+  if (!data) { alert('Please generate the report first.'); return; }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function pN(v){ if(v==null||v==='') return null; const n=parseFloat(String(v).replace(/[,\s₦NB]/g,'').replace(/%$/,'')); return isNaN(n)?null:n; }
+  function normPct(v){ const n=pN(v); return n===null?null:(n<2?n*100:n); }
+  function fmtRaw(v){ const n=pN(v); if(n===null) return '—'; const abs=Math.abs(n),s=n<0?'-':''; if(abs>=1e9) return `${s}N${(abs/1e9).toFixed(2)}B`; if(abs>=1e6) return `${s}N${(abs/1e6).toFixed(1)}M`; if(abs>=1e3) return `${s}N${Math.round(abs).toLocaleString()}`; return `${s}N${abs.toFixed(0)}`; }
+  function fmtBig(v){ const n=pN(v); if(n===null) return '—'; if(Math.abs(n)>=1000) return `N${(n/1000).toFixed(2)}B`; return `N${n.toFixed(1)}M`; }
+  function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function sColor(v){ const n=normPct(v); if(n===null) return {c:'#6B7280',bg:'#F9FAFB',lbl:'—'}; if(n>=100) return {c:'#166534',bg:'#DCFCE7',lbl:'GREAT'}; if(n>=90) return {c:'#15803d',bg:'#DCFCE7',lbl:'STABLE'}; if(n>=80) return {c:'#D97706',bg:'#FEF3C7',lbl:'WEAK'}; return {c:'#DC2626',bg:'#FEE2E2',lbl:'CONCERNING'}; }
+  function pctFmt(v){ const n=normPct(v); return n!=null?`${n.toFixed(1)}%`:'—'; }
+  function yoyFmt(v){ const n=pN(v); return n!=null?`${n>=0?'+':''}${n.toFixed(1)}%`:'—'; }
+  function yoyColor(v){ const n=pN(v); return n!=null?(n>=0?'#166534':'#DC2626'):'#6B7280'; }
+
+  // ── Data parsing ──────────────────────────────────────────────────────────
+  const ytdAll   = (data.businessYTD||[]).filter(r=>r?.[0]);
+  const ytdMonths= ytdAll.filter(r=>!['MONTH','YTD','TOTAL'].includes((r[0]||'').toUpperCase()));
+  const ytdRow   = ytdAll.find(r=>(r[0]||'').toUpperCase()==='YTD');
+  const latestM  = ytdMonths[ytdMonths.length-1];
+  const mLabel   = (latestM?.[0]||'JUNE').toUpperCase();
+  const MFULL    = {JAN:'January',FEB:'February',MAR:'March',APR:'April',MAY:'May',JUN:'June',JUL:'July',AUG:'August',SEP:'September',OCT:'October',NOV:'November',DEC:'December'};
+  const fullMonth= MFULL[mLabel]||mLabel;
+  const revVs    = ytdMonths.map(r=>pN(r[1])).filter(v=>v!==null);
+  const revLbs   = ytdMonths.map(r=>String(r[0]||'').toUpperCase());
+  const ytdTot   = pN(ytdRow?.[1]) ?? revVs.reduce((a,b)=>a+b,0);
+  const lastV    = revVs[revVs.length-1];
+  const prevV    = revVs[revVs.length-2];
+  const peakI    = revVs.length?revVs.indexOf(Math.max(...revVs)):-1;
+  const peakLb   = peakI>=0?(MFULL[revLbs[peakI]]||revLbs[peakI]):'';
+  const peakV    = peakI>=0?revVs[peakI]:null;
+  const momR     = (prevV&&lastV)?(lastV-prevV)/prevV*100:null;
+  const q1a      = revVs.slice(0,3).length?revVs.slice(0,3).reduce((a,b)=>a+b,0)/3:null;
+  const q2a      = revVs.slice(3,6).length?revVs.slice(3,6).reduce((a,b)=>a+b,0)/revVs.slice(3,6).length:null;
+  function fmtBil(v){ const n=pN(v); if(n===null) return '—'; return Math.abs(n)>=1?`N${Math.abs(n).toFixed(2)}B`:`N${(Math.abs(n)*1000).toFixed(0)}M`; }
+
+  const rov      = data.revenueOverview||[];
+  let rovHdr     = rov.find(r=>r?.slice(1).some(c=>/jan|feb|mar|apr|may|jun/i.test(String(c))));
+  if(!rovHdr) rovHdr = rov.find(r=>r?.some(c=>/jan|feb|mar|apr|may|jun/i.test(String(c))));
+  const rovCols  = rovHdr?rovHdr.filter(c=>c&&/jan|feb|mar|apr|may|jun/i.test(String(c))):[];
+  const rovIdx   = rovHdr?rovCols.map(c=>rovHdr.indexOf(c)):[];
+  let coreBiz=[],otherBiz=[],inC=false,inO=false;
+  for(const r of rov){ if(!r?.[0]) continue; if(/core business/i.test(r[0])){inC=true;inO=false;continue;} if(/other.*business|other.*key/i.test(r[0])){inO=true;inC=false;continue;} if(inC&&r.length>=2)coreBiz.push(r); if(inO&&r.length>=2)otherBiz.push(r); }
+  const smRow    = coreBiz.find(r=>/supermarket|sm\b/i.test(r[0]));
+  const rstRow   = coreBiz.find(r=>/restaurant|rst\b/i.test(r[0]));
+  const totBizRow= coreBiz.find(r=>/total/i.test(r[0]));
+  const junIdx   = rovCols.findIndex(c=>/jun/i.test(c));
+  const mayIdx   = rovCols.findIndex(c=>/may/i.test(c));
+  function rovVal(row){ if(!row) return null; if(junIdx>=0&&rovIdx[junIdx]!=null) return pN(row[rovIdx[junIdx]]); const nums=row.slice(1).map(pN).filter(v=>v!==null); if(nums.length>=2&&nums[nums.length-1]>nums[nums.length-2]*3) return nums[nums.length-2]; return nums[nums.length-1]??null; }
+  const smJunV   = rovVal(smRow);
+  const rstJunV  = rovVal(rstRow);
+  const totJunV  = rovVal(totBizRow)||(smJunV&&rstJunV?smJunV+rstJunV:null);
+  const smPct    = totJunV&&smJunV?(smJunV/totJunV*100).toFixed(1):null;
+  const rstPct   = totJunV&&rstJunV?(rstJunV/totJunV*100).toFixed(1):null;
+
+  const rg       = data.revenueGrowth||[];
+  const rgRows   = rg.filter(r=>r?.[0]&&!/month|period|growth|header/i.test(r[0])&&r.length>=4);
+  const latestRg = rgRows.filter(r=>!/ytd|same/i.test(r[0])).slice(-1)[0];
+  const ytdRg    = rgRows.find(r=>/biz ytd/i.test(r[0]));
+  const ssRg     = rgRows.find(r=>/same.store/i.test(r[0]));
+
+  const allOuts  = (data.outletsPerf||[]).filter(r=>r?.[0]&&r[0]!=='OUTLET');
+  const globalOut= allOuts.find(r=>/global/i.test(r[0]));
+  const outRows  = allOuts.filter(r=>!/global/i.test(r[0]));
+  const gAch     = normPct(globalOut?.[5]??globalOut?.[4]);
+
+  const regions  = (data.regionPerf||[]).filter(r=>r?.[0]&&!/region|june|performance/i.test(r[0]));
+
+  const areaRaw  = data.areaPerf||[];
+  const areaRows = [];
+  for(const r of areaRaw){ if(!r?.[0]&&!r?.[1]) continue; if(/^(area leader|leader|outlet|june 2026|performance)$/i.test((r[0]||'').trim())) continue; if(!r[1]||r.length<4) continue; areaRows.push({leader:r[0]||'',outlet:r[1],target:r[2],actual:r[3],diff:r[4],pct:r[5],isTotal:/total/i.test(r[1])}); }
+
+  const catYTD   = data.categorySalesYTD||[];
+  const catYHdr  = catYTD.find(r=>r?.slice(1).some(c=>/jan|feb|mar/i.test(String(c))));
+  const catYCols = catYHdr?catYHdr.slice(1).filter(Boolean):[];
+  const catYRows = catYTD.filter(r=>r?.[0]&&!/dept|category|sales/i.test(r[0])&&r.length>=2);
+
+  const catLat   = data.categorySalesLatest||[];
+  const catLHdr  = catLat.find(r=>/dept|category/i.test(r[0])||r?.slice(1).some(c=>/may|jun|sales/i.test(String(c))));
+  const catLCols = catLHdr?catLHdr.slice(1).filter(Boolean):[];
+  const catLRows = catLat.filter(r=>r?.[0]&&!/dept|category/i.test(r[0])&&r.length>=3);
+
+  const yoy      = data.yoy||[];
+  const smI      = yoy.findIndex(r=>r?.some(c=>/sm.*3f|sm\+3f/i.test(String(c))));
+  const yoySec   = smI>=0?yoy.slice(smI):yoy;
+  const yoyRows  = yoySec.filter(r=>{ if(!r?.[0]) return false; if(/outlet|store|total|same.store|supermarket|restaurant|sm\+3f/i.test(r[0])) return false; return r.length>=4; });
+  const yoyHdrR  = yoy.find(r=>r?.some(c=>/2025|prev/i.test(String(c))));
+  const y25VI    = yoyHdrR?yoyHdrR.findIndex(c=>/2025.*val|val.*2025/i.test(String(c))):2;
+  const y26VI    = yoyHdrR?yoyHdrR.findIndex(c=>/2026.*val|val.*2026/i.test(String(c))):4;
+  const yPctI    = yoyHdrR?yoyHdrR.findIndex(c=>/%\s*val|val.*%/i.test(String(c))):-1;
+  function yoyPct(r){ return yPctI>=0?pN(r[yPctI]):pN(r[r.length-1]); }
+  const yoyGrow  = yoyRows.filter(r=>yoyPct(r)>=0).sort((a,b)=>(yoyPct(b)||0)-(yoyPct(a)||0));
+  const yoyDec   = yoyRows.filter(r=>yoyPct(r)<0).sort((a,b)=>(yoyPct(a)||0)-(yoyPct(b)||0));
+
+  const utilD    = (data.utility||[]).filter(r=>r?.[0]&&!/desc|header/i.test(r[0]));
+  function fmtUtil(lbl,v){ const n=pN(v); if(n===null) return '—'; return (/value|cost/i.test(String(lbl))||n>=1e6)?fmtRaw(n):Number(Math.round(n)).toLocaleString(); }
+
+  // Revenue Overview presenter month data
+  const rovMonths= rovCols.slice(0,6);
+
+  // ── Logo ──────────────────────────────────────────────────────────────────
+  const logoDataUrl = window._presLogoUrl || null;
+  (async()=>{
+    try{
+      const res=await fetch('./foodco-logo.png'); if(!res.ok) return;
+      const blob=await res.blob();
+      await new Promise(resolve=>{
+        const img=new Image(); const burl=URL.createObjectURL(blob);
+        img.onload=()=>{ const c=document.createElement('canvas'); c.width=img.naturalWidth; c.height=img.naturalHeight; const ctx=c.getContext('2d'); ctx.drawImage(img,0,0); const id=ctx.getImageData(0,0,c.width,c.height); const px=id.data; for(let i=0;i<px.length;i+=4){if(px[i]>235&&px[i+1]>235&&px[i+2]>235)px[i+3]=0;} ctx.putImageData(id,0,0); URL.revokeObjectURL(burl); window._presLogoUrl=c.toDataURL('image/png'); resolve(); };
+        img.onerror=()=>{URL.revokeObjectURL(burl);resolve();}; img.src=burl;
+      });
+    }catch{}
+  })();
+
+  const LOGO_HTML = window._presLogoUrl
+    ? `<img src="${window._presLogoUrl}" class="ps-logo" alt="FoodCo"/>`
+    : `<span class="ps-logo-text">FoodCo</span>`;
+
+  // ── Slide builder helpers ──────────────────────────────────────────────────
+  const TABS=['REVENUE','GROWTH','OUTLETS','CATEGORY','COMPARISON'];
+  function tabBar(active){
+    return `<div class="ps-tabbar">${TABS.map(t=>`<div class="ps-tab${t===active?' ps-tab-on':''}">${t}</div>`).join('')}</div><div class="ps-orange-stripe"></div>`;
+  }
+  function slideHeader(active,title,pg){
+    return `${tabBar(active)}<div class="ps-titlerow"><div><div class="ps-title">${esc(title)}</div><div class="ps-title-accent"></div></div>${LOGO_HTML}<span class="ps-pgnum">${String(pg).padStart(2,'0')}</span></div>`;
+  }
+  function kpiCard(label,val,col,bg,border){
+    return `<div class="ps-kpi-card" style="border-color:${border};background:${bg}"><div class="ps-kpi-label">${esc(label)}</div><div class="ps-kpi-val" style="color:${col}">${esc(val)}</div></div>`;
+  }
+  function sLabel(text,orange=false){
+    return `<div class="ps-slabel" style="color:${orange?'#ea580c':'#166534'}">${esc(text)}<div class="ps-slabel-bar"></div></div>`;
+  }
+  function table(headers,rows,orangeHdr=false){
+    const hbg=orangeHdr?'#ea580c':'#166534';
+    return `<div class="ps-tbl-wrap"><table class="ps-tbl"><thead><tr>${headers.map(h=>`<th style="background:${hbg}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,ri)=>`<tr class="${ri%2===1?'ps-alt':''}">${r.map(c=>{ const isObj=typeof c==='object'&&c!==null; const txt=isObj?c.text:c; const sty=isObj?`style="${c.style||''}"`:''  ; return `<td ${sty}>${esc(txt)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+  function statusCell(v){ const s=sColor(v); return {text:s.lbl,style:`color:${s.c};background:${s.bg};font-weight:700;text-align:center`}; }
+  function numCell(v,col){ return {text:String(v||'—'),style:`text-align:right${col?`;color:${col}`:''}` }; }
+  function pctCell(v){ const n=normPct(v); const col=n!=null?(n>=90?'#166534':n>=80?'#D97706':'#DC2626'):'#6B7280'; return {text:n!=null?`${n.toFixed(1)}%`:'—',style:`text-align:right;font-weight:700;color:${col}`}; }
+
+  // ── Bar chart (CSS-based) ─────────────────────────────────────────────────
+  function barChart(labels,values,title){
+    const max=Math.max(...values,0.01);
+    const bars=labels.map((lb,i)=>{
+      const h=Math.round(values[i]/max*100);
+      const v=values[i]!=null?`N${values[i].toFixed(2)}B`:'';
+      return `<div class="ps-bar-col"><div class="ps-bar-val">${v}</div><div class="ps-bar-body" style="height:${h}%"></div><div class="ps-bar-lbl">${esc(lb)}</div></div>`;
+    }).join('');
+    return `<div class="ps-chart-wrap"><div class="ps-chart-title">${esc(title)}</div><div class="ps-bars">${bars}</div></div>`;
+  }
+
+  // ── Slides ────────────────────────────────────────────────────────────────
+  const SLIDES=[];
+
+  // Slide 1: Cover
+  SLIDES.push(`<div class="ps-slide ps-cover">
+    <div class="ps-cover-bg"></div>
+    <div class="ps-cover-body">
+      ${window._presLogoUrl?`<img src="${window._presLogoUrl}" class="ps-cover-logo" alt="FoodCo"/>`:`<div class="ps-cover-logo-text">FoodCo</div>`}
+      <div class="ps-cover-line top"></div>
+      <div class="ps-cover-title">${fullMonth.toUpperCase()} 2026 SALES REPORT</div>
+      <div class="ps-cover-sub">FOODCO NIGERIA</div>
+      <div class="ps-cover-line"></div>
+      <div class="ps-cover-presenter">Presented by <strong>Ayodele Adio</strong></div>
+      <div class="ps-cover-role">Head, Sales Operations</div>
+      <div class="ps-cover-date">${fullMonth} 2026</div>
+    </div>
+    <div class="ps-cover-footer"></div>
+  </div>`);
+
+  // Slide 2: Executive Overview
+  SLIDES.push(`<div class="ps-slide">
+    ${tabBar('')}
+    <div class="ps-titlerow"><div><div class="ps-title" style="color:#166534">EXECUTIVE OVERVIEW</div><div class="ps-title-accent"></div></div>${LOGO_HTML}</div>
+    <div class="ps-body ps-exec-grid">
+      ${[
+        {n:'01',name:'REVENUE',  desc:'YTD Revenue Performance, Core Business Overview, and Monthly Revenue Trends',col:'#166534',bg:'#F0FDF4'},
+        {n:'02',name:'GROWTH',   desc:'Period Growth Analysis, Year-over-Year comparisons, and Same Store performance',col:'#ea580c',bg:'#FFF7ED'},
+        {n:'03',name:'OUTLETS',  desc:'Outlet Performance, Regional Analysis, Area Leaders, and Top 5 Store Rankings',col:'#166534',bg:'#F0FDF4'},
+        {n:'04',name:'CATEGORY', desc:'Category Sales YTD, June Category Performance, Target Achievement, and Weekly Analysis',col:'#ea580c',bg:'#FFF7ED'},
+      ].map(q=>`<div class="ps-exec-card" style="background:${q.bg};border-left:6px solid ${q.col}">
+        <div class="ps-exec-num" style="color:${q.col}">${q.n}</div>
+        <div class="ps-exec-name" style="color:${q.col}">${q.name}</div>
+        <div class="ps-exec-desc">${q.desc}</div>
+      </div>`).join('')}
+    </div>
+    <div class="ps-pgnum">02</div>
+  </div>`);
+
+  // Slide 3: Revenue KPIs
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('REVENUE',`YTD Revenue ${fmtBil(ytdTot)} with ${fullMonth} at ${fmtBil(lastV)}`,3)}
+    <div class="ps-body">
+      <div class="ps-kpi-row" style="margin-bottom:12px">
+        ${kpiCard(`${fullMonth.toUpperCase()} REVENUE`,fmtBil(lastV),'#166534','#F0FDF4','#166534')}
+        ${kpiCard('YTD REVENUE',fmtBil(ytdTot),'#166534','#F0FDF4','#166534')}
+        ${kpiCard('PEAK MONTH',`${peakLb.toUpperCase()} ${fmtBil(peakV)}`,'#ea580c','#FFF7ED','#ea580c')}
+        ${kpiCard(`${fullMonth.toUpperCase()} vs PREV`,momR!=null?`${momR>=0?'+':''}${momR.toFixed(1)}%`:'—',momR!=null&&momR>=0?'#166534':'#DC2626',momR!=null&&momR>=0?'#F0FDF4':'#FEE2E2',momR!=null&&momR>=0?'#166534':'#DC2626')}
+      </div>
+      <div class="ps-split">
+        <div style="flex:1.8">${revVs.length?barChart(revLbs,revVs,'Monthly Revenue 2026 (Billion Naira)'):'<div class="ps-no-data">No revenue data</div>'}</div>
+        <div class="ps-insights" style="flex:1">
+          <div class="ps-insight-title">KEY INSIGHTS</div>
+          ${peakLb&&peakV?`<div class="ps-insight-item"><span class="ps-insight-dot" style="background:#166534"></span><span><strong>${peakLb} 2026</strong> was the peak month at <strong>${fmtBil(peakV)}</strong></span></div>`:''}
+          ${momR!=null?`<div class="ps-insight-item"><span class="ps-insight-dot" style="background:${momR>=0?'#166534':'#DC2626'}"></span><span><strong style="color:${momR>=0?'#166534':'#DC2626'}">${fullMonth}</strong> ${momR<0?'declined':'grew'} ${Math.abs(momR).toFixed(1)}% from previous month to <strong>${fmtBil(lastV)}</strong></span></div>`:''}
+          ${q1a&&q2a?`<div class="ps-insight-item"><span class="ps-insight-dot" style="background:#6B7280"></span><span>Q2 average: <strong>${fmtBil(q2a)}</strong> vs Q1: <strong>${fmtBil(q1a)}</strong></span></div>`:''}
+        </div>
+      </div>
+    </div>
+  </div>`);
+
+  // Slide 4: Core vs Other Business
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('REVENUE',`Core Business: Supermarket ${fmtBig(smJunV)}, Restaurant ${fmtBig(rstJunV)}`,4)}
+    <div class="ps-body ps-split" style="gap:24px">
+      <div style="flex:1.3">
+        <div class="ps-section-tag">CORE BUSINESS (Million)</div>
+        ${rovMonths.length?table(
+          ['Business',...rovMonths],
+          coreBiz.map(r=>{ const isT=/total/i.test(r[0]); return [
+            {text:r[0],style:isT?'font-weight:700':''},
+            ...rovMonths.map((_,ci)=>({text:rovIdx[ci]!=null?String(r[rovIdx[ci]]||'—'):String(r[ci+1]||'—'),style:`text-align:right${isT?';font-weight:700;background:#DCFCE7':''}`})),
+          ]; })
+        ):`<p class="ps-no-data">Data columns not detected</p>`}
+        ${totJunV?`<div class="ps-insight-banner"><strong>${fullMonth} Total: ${fmtBig(totJunV)}</strong> | Supermarket ${smPct||'—'}% | Restaurant ${rstPct||'—'}%</div>`:''}
+      </div>
+      <div style="flex:1">
+        <div class="ps-section-tag" style="color:#ea580c">OTHER BUSINESSES (Million)</div>
+        ${otherBiz.length?table(
+          ['Business','MAY','JUN','Change'],
+          otherBiz.map(r=>{
+            const mV=mayIdx>=0&&rovIdx[mayIdx]!=null?pN(r[rovIdx[mayIdx]]):pN(r[mayIdx+1]);
+            const jV=junIdx>=0&&rovIdx[junIdx]!=null?pN(r[rovIdx[junIdx]]):pN(r[junIdx+1]);
+            const chg=(mV&&jV&&mV!==0)?(jV-mV)/mV*100:null;
+            return [r[0],{text:mV!=null?String(mV):'—',style:'text-align:right'},{text:jV!=null?String(jV):'—',style:'text-align:right'},{text:chg!=null?`${chg>=0?'+':''}${chg.toFixed(1)}%`:'—',style:`text-align:right;font-weight:700;color:${chg!=null&&chg>=0?'#166534':'#DC2626'}`}];
+          }),
+          true
+        ):`<p class="ps-no-data">Other business data not available</p>`}
+      </div>
+    </div>
+  </div>`);
+
+  // Slide 5: Growth
+  const growKpis=[
+    {lbl:`${latestRg?.[0]||''} VALUE YoY`, v:latestRg?.[3]},
+    {lbl:`${latestRg?.[0]||''} VOLUME YoY`,v:latestRg?.[4]},
+    {lbl:'BIZ YTD GROWTH',                 v:ytdRg?.[3]},
+    {lbl:'SAME STORE YTD',                 v:ssRg?.[3]},
+  ].filter(k=>k.v!=null);
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('GROWTH','REVENUE & GROWTH',5)}
+    <div class="ps-body">
+      <div class="ps-kpi-row">${growKpis.map(k=>{ const n=pN(k.v); const col=n!=null&&n>=0?'#166534':'#DC2626'; const bg=n!=null&&n>=0?'#F0FDF4':'#FEE2E2'; return kpiCard(k.lbl,yoyFmt(k.v),col,bg,col); }).join('')}</div>
+      ${sLabel('MONTHLY GROWTH PERFORMANCE')}
+      ${table(['PERIOD','2026 (M)','2025 (M)','VAL YoY%','VOL YoY%','SAME STORE%'],
+        rgRows.map(r=>{ const isY=/ytd/i.test(r[0]); const v3=pN(r[3]),v4=pN(r[4]),v5=pN(r[5]);
+          return [
+            {text:r[0],style:isY?'font-weight:700;background:#DCFCE7':''},
+            {text:r[1]?Number(r[1]).toLocaleString():'—',style:`text-align:right${isY?';font-weight:700;background:#DCFCE7':''}`},
+            {text:r[2]?Number(r[2]).toLocaleString():'—',style:`text-align:right${isY?';background:#DCFCE7':''}`},
+            {text:yoyFmt(r[3]),style:`text-align:right;font-weight:700;color:${yoyColor(r[3])}${isY?';background:#DCFCE7':''}`},
+            {text:yoyFmt(r[4]),style:`text-align:right;font-weight:700;color:${yoyColor(r[4])}${isY?';background:#DCFCE7':''}`},
+            {text:yoyFmt(r[5]),style:`text-align:right;font-weight:700;color:${yoyColor(r[5])}${isY?';background:#DCFCE7':''}`},
+          ]; })
+      )}
+    </div>
+  </div>`);
+
+  // Slide 6: Outlet Performance
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('OUTLETS',`OUTLET PERFORMANCE · ${gAch!=null?gAch.toFixed(1)+'% of Target':'Overview'}`,6)}
+    <div class="ps-body ps-split" style="gap:16px;align-items:flex-start">
+      <div class="ps-global-kpi" style="background:${sColor(globalOut?.[5]).bg};border:2px solid ${sColor(globalOut?.[5]).c}">
+        <div class="ps-gkpi-label">GLOBAL ACHIEVEMENT</div>
+        <div class="ps-gkpi-val" style="color:${sColor(globalOut?.[5]).c}">${gAch!=null?gAch.toFixed(1)+'%':'—'}</div>
+        <div class="ps-gkpi-status" style="color:${sColor(globalOut?.[5]).c}">${sColor(globalOut?.[5]).lbl}</div>
+        ${globalOut?`<div class="ps-gkpi-detail">Target: ${fmtRaw(globalOut[1])}<br/>Actual: ${fmtRaw(globalOut[2])}</div>`:''}
+      </div>
+      <div style="flex:1">
+        ${table(['OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS'],
+          [...(globalOut?[[{text:'GLOBAL',style:'font-weight:700;background:#DCFCE7'},numCell(fmtRaw(globalOut[1]),''),numCell(fmtRaw(globalOut[2]),''),numCell(fmtRaw(globalOut[4]),''),pctCell(globalOut[5]),statusCell(globalOut[5])]]:[]),
+          ...outRows.slice(0,16).map(r=>[ r[0], numCell(fmtRaw(r[1]),''), numCell(fmtRaw(r[2]),''), numCell(fmtRaw(r[4]),''), pctCell(r[5]), statusCell(r[5]) ]),
+        ])}
+      </div>
+    </div>
+  </div>`);
+
+  // Slide 7: Regional Performance
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('OUTLETS','REGIONAL PERFORMANCE',7)}
+    <div class="ps-body">
+      <div class="ps-region-cards">${regions.map(r=>{ const s=sColor(r[5]??r[4]); const pv=normPct(r[5]??r[4]); return `<div class="ps-region-card" style="border-left:6px solid ${s.c};background:${s.bg}"><div class="ps-reg-name" style="color:${s.c}">${esc(r[0])}</div><div class="ps-reg-pct" style="color:${s.c}">${pv!=null?Math.round(pv)+'%':'—'}</div><div class="ps-reg-detail">Target: ${fmtRaw(r[3])}<br/>Actual: ${fmtRaw(r[2])}</div></div>`; }).join('')}</div>
+      ${sLabel('REGIONAL SALES SUMMARY')}
+      ${table(['REGION','ACTUAL SALES','TARGET','DIFF','ACH%','STATUS'],
+        regions.map(r=>[ r[0], numCell(fmtRaw(r[2]),''), numCell(fmtRaw(r[3]),''), numCell(fmtRaw(r[4]),''), pctCell(r[5]??r[4]), statusCell(r[5]??r[4]) ])
+      )}
+    </div>
+  </div>`);
+
+  // Slide 8: Area Leaders
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('OUTLETS','AREA LEADERS PERFORMANCE',8)}
+    <div class="ps-body">
+      ${table(['LEADER','OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS'],
+        areaRows.map(r=>[ {text:r.leader,style:r.leader?'color:#166534;font-weight:700':''}, {text:r.outlet,style:r.isTotal?'font-weight:700':''}, numCell(fmtRaw(r.target),''), numCell(fmtRaw(r.actual),''), numCell(fmtRaw(r.diff),''), pctCell(r.pct), statusCell(r.pct) ])
+      )}
+    </div>
+  </div>`);
+
+  // Slide 9: Top 5 Stores (static fallback — TopStores sheet structure varies)
+  const topStores=data.topStores||[];
+  const tsHdrI=topStores.findIndex(r=>r?.some(c=>/jan|feb|mar/i.test(String(c))));
+  const tsMH=tsHdrI>=0?topStores[tsHdrI]:[];
+  const tsRanks=topStores.filter(r=>r?.[0]&&/^#?\d+$/i.test(String(r[0]).trim())).slice(0,5);
+  const tsMths=[{l:'JAN'},{l:'FEB'},{l:'MAR'},{l:'APR'},{l:'MAY'},{l:'JUN'}].map(m=>{const i=tsMH.findIndex(c=>new RegExp(m.l,'i').test(String(c)));return{...m,ni:i,vi:i+1};}).filter(m=>m.ni>=0);
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('OUTLETS',`TOP 5 STORES — ${fullMonth.toUpperCase()} PERFORMANCE`,9)}
+    <div class="ps-body">
+      ${tsRanks.length?table(
+        ['RANK',...tsMths.map(m=>m.l)],
+        tsRanks.map((r,ri)=>[ {text:`#${ri+1}`,style:'font-weight:700;color:#ea580c;text-align:center'}, ...tsMths.map(m=>({text:`${m.ni>=0&&r[m.ni]?r[m.ni]:''} ${m.vi>=0&&r[m.vi]?fmtRaw(r[m.vi]):''}`.trim()||'—',style:'text-align:center;font-size:0.82em'})) ])
+      ):`<p class="ps-no-data">Top stores data not available in current sheet</p>`}
+      ${tsRanks.length&&tsMths.some(m=>/jun/i.test(m.l))?`<div class="ps-insight-banner" style="margin-top:12px"><strong>JUNE TOP STORES: </strong>${tsRanks.slice(0,5).map((r,i)=>{ const jm=tsMths.find(m=>/jun/i.test(m.l)); return jm&&r[jm.ni]?`#${i+1} ${r[jm.ni]} (${fmtRaw(r[jm.vi])})`:''}).filter(Boolean).join('  ·  ')}</div>`:''}
+    </div>
+  </div>`);
+
+  // Slide 10: Category YTD
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('CATEGORY','CATEGORY SALES YTD',10)}
+    <div class="ps-body">
+      ${sLabel('DEPARTMENT PERFORMANCE BY MONTH')}
+      ${table(['DEPARTMENT',...catYCols],
+        catYRows.map(r=>{ const isT=/total/i.test(r[0]); return [ {text:r[0],style:isT?'font-weight:700':''}, ...catYCols.map((_,i)=>({text:fmtRaw(r[i+1]),style:`text-align:right${isT?';font-weight:700;background:#DCFCE7':''}` })) ]; })
+      )}
+      <div class="ps-kpi-row" style="margin-top:10px">
+        ${catYRows.filter(r=>!/total/i.test(r[0])).slice(0,4).map(r=>kpiCard(String(r[0]),fmtRaw(r[r.length-1]),'#166534','#F0FDF4','#166534')).join('')}
+      </div>
+    </div>
+  </div>`);
+
+  // Slide 11: June Category Performance
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('CATEGORY',`${fullMonth.toUpperCase()} CATEGORY PERFORMANCE`,11)}
+    <div class="ps-body">
+      ${sLabel(`${fullMonth.toUpperCase()} vs PREV MONTH TARGET ACHIEVEMENT`,true)}
+      ${catLRows.length?table(
+        ['DEPARTMENT',...catLCols],
+        catLRows.map(r=>{ const isG=/global|total/i.test(r[0]); return [ {text:r[0],style:isG?'font-weight:700;background:#DCFCE7':''}, ...catLCols.map((_,j)=>{ const v=r[j+1]; const isA=catLCols[j]?.includes('%'); const n=pN(v); const col=isA&&n!=null?(n>=90?'#166534':n>=80?'#D97706':'#DC2626'):'#374151'; return {text:isA?(n!=null?`${n.toFixed(1)}%`:'—'):fmtRaw(v),style:`text-align:right;color:${col}${isG?';font-weight:700;background:#DCFCE7':''}` }; }) ]; })
+      ):`<p class="ps-no-data">Category performance data not available</p>`}
+    </div>
+  </div>`);
+
+  // Slide 12: Category Achievement Trends
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('CATEGORY','CATEGORY ACHIEVEMENT TRENDS',12)}
+    <div class="ps-body">
+      ${sLabel('JUNE CATEGORY STATUS & KEY OBSERVATIONS')}
+      ${catLRows.length?table(
+        ['DEPARTMENT',...catLCols,'STATUS','OBSERVATION'],
+        catLRows.map(r=>{ const isG=/global|total/i.test(r[0]);
+          const achI=catLCols.findIndex(c=>/%/i.test(String(c)));
+          const achV=achI>=0?r[achI+1]:null;
+          const obs={'household':'Lowest — seasonal dip post-Ileya','fresh food':'Sharp decline — supply review needed','cashier':'Below 80% — manning gap','3f':'Off May peak but stable','grocery':'Largest line — needs recovery','toiletries':'Most stable — hold strategy','h&b':'Moderate decline','entertainment':'Smallest line'};
+          const obsKey=Object.keys(obs).find(k=>new RegExp(k,'i').test(r[0]))||'';
+          return [ {text:r[0],style:isG?'font-weight:700;background:#DCFCE7':''},
+            ...catLCols.map((_,j)=>{ const v=r[j+1]; const isA=catLCols[j]?.includes('%'); const n=pN(v); const col=isA&&n!=null?(n>=90?'#166534':n>=80?'#D97706':'#DC2626'):'#374151'; return {text:isA?(n!=null?`${n.toFixed(1)}%`:'—'):fmtRaw(v),style:`text-align:right;color:${col}${isG?';font-weight:700;background:#DCFCE7':''}`}; }),
+            statusCell(achV),
+            {text:isG?'All categories declined vs May':obs[obsKey]||'',style:'font-size:0.8em;color:#374151'},
+          ]; })
+      ):`<p class="ps-no-data">No data</p>`}
+      <div class="ps-insight-banner" style="background:#1E3A2A;color:#fff;margin-top:8px"><strong style="color:#ea580c">KEY CONCERN: </strong>Household weakest (68%). Fresh Food and Cashier need urgent intervention. Only Toiletries above 80%.</div>
+    </div>
+  </div>`);
+
+  // Slide 13: Weekly Sales
+  const wkStatic=[{lbl:'Week 1 (1–7)',sales:'N801M',ads:'N114M/day',low:false},{lbl:'Week 2 (8–14)',sales:'N758M',ads:'N108M/day',low:false},{lbl:'Week 3 (15–21)',sales:'N747M',ads:'N107M/day',low:true},{lbl:'Week 4 (22–28)',sales:'N772M',ads:'N110M/day',low:false},{lbl:'Week 5 (29–30)',sales:'N202M',ads:'N101M/day',low:false}];
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('CATEGORY',`${fullMonth.toUpperCase()} WEEKLY SALES & STOCK AVAILABILITY`,13)}
+    <div class="ps-body">
+      <div class="ps-week-cards">${wkStatic.map(w=>`<div class="ps-week-card" style="border:2px solid ${w.low?'#D97706':'#166534'};background:${w.low?'#FEF3C7':'#F0FDF4'}"><div class="ps-wk-lbl" style="color:#6B7280">${w.lbl}</div><div class="ps-wk-sales" style="color:${w.low?'#D97706':'#166534'}">${w.sales}</div><div class="ps-wk-ads" style="color:${w.low?'#D97706':'#166534'}">${w.ads}</div></div>`).join('')}</div>
+      ${sLabel('STOCK AVAILABILITY BY LINE')}
+      ${table(['CATEGORY LINE','W1','W4','AVG'],
+        [['Diamond Lines Grocery','79%','83%','81%'],['Diamond Lines Toiletries','83%','84%','84%'],['Diamond Lines Fresh Food','84%','86%','86%'],['Silver Lines Grocery','76%','79%','78%'],['Silver Lines Toiletries','84%','86%','86%'],['Silver Lines Fresh Food','90%','91%','91%']].map(r=>[ r[0], ...r.slice(1).map(v=>({text:v,style:`text-align:center;font-weight:700;color:${parseFloat(v)>=90?'#166534':parseFloat(v)>=85?'#15803d':'#D97706'}`})) ])
+      )}
+      <div class="ps-insight-banner">Week 3 was weakest. Silver Lines Fresh Food strongest at 91%. Diamond Lines Grocery needs improvement at 81%.</div>
+    </div>
+  </div>`);
+
+  // Slide 14: Departmental Growth Comparison
+  const smVals=smRow?smRow.slice(1).map(pN).filter(v=>v!==null):[];
+  const rstVals=rstRow?rstRow.slice(1).map(pN).filter(v=>v!==null):[];
+  const smYTD=smVals.reduce((a,b)=>a+b,0); const rstYTD=rstVals.reduce((a,b)=>a+b,0);
+  const totYTD=smYTD+rstYTD;
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('COMPARISON','DEPARTMENTAL GROWTH COMPARISON',14)}
+    <div class="ps-body ps-split" style="gap:20px;align-items:flex-start">
+      ${[{label:'SUPERMARKET',vals:smVals,col:'#166534',bg:'#F0FDF4',bd:'#166534'},{label:'RESTAURANT',vals:rstVals,col:'#ea580c',bg:'#FFF7ED',bd:'#ea580c'}].map(p=>{
+        const latV=p.vals[p.vals.length-1]; const prevV2=p.vals[p.vals.length-2];
+        const mom2=prevV2&&latV?(latV-prevV2)/prevV2*100:null;
+        const ytdP=p.vals.reduce((a,b)=>a+b,0);
+        return `<div style="flex:1"><div class="ps-dept-header" style="background:${p.col}">${p.label}</div>
+          <div class="ps-kpi-row" style="margin:8px 0">${[
+            {lbl:`${fullMonth.toUpperCase()} VALUE`,val:fmtBig(latV),col:p.col,bg:p.bg,bd:p.bd},
+            {lbl:'YTD TOTAL',val:fmtBig(ytdP),col:p.col,bg:p.bg,bd:p.bd},
+            {lbl:'VS PREV',val:mom2!=null?`${mom2>=0?'+':''}${mom2.toFixed(1)}%`:'—',col:mom2!=null&&mom2>=0?'#166534':'#DC2626',bg:mom2!=null&&mom2>=0?'#F0FDF4':'#FEE2E2',bd:mom2!=null&&mom2>=0?'#166534':'#DC2626'},
+          ].map(k=>kpiCard(k.lbl,k.val,k.col,k.bg,k.bd)).join('')}</div>
+          ${rovMonths.length?table([p.label,...rovMonths.slice(0,p.vals.length)],[[ {text:'Revenue (M)',style:`font-weight:700;color:${p.col}`}, ...p.vals.map((v,i)=>({text:fmtBig(v),style:`text-align:right;${i===p.vals.length-1?`font-weight:700;color:${p.col}`:''}`})) ]]):''}</div>`;
+      }).join('')}
+    </div>
+    <div class="ps-insight-banner" style="background:#1E3A2A;color:#fff"><strong style="color:#AADDB0">YTD Combined: ${fmtBig(totYTD)}</strong> | Supermarket: ${fmtBig(smYTD)} (${totYTD?(smYTD/totYTD*100).toFixed(1):0}%) | Restaurant: ${fmtBig(rstYTD)} (${totYTD?(rstYTD/totYTD*100).toFixed(1):0}%)</div>
+  </div>`);
+
+  // Slide 15: YoY Comparison
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('COMPARISON','OUTLET YEAR-ON-YEAR PERFORMANCE',15)}
+    <div class="ps-body ps-split" style="gap:16px;align-items:flex-start">
+      <div style="flex:1">
+        ${sLabel('TOP GROWERS')}
+        ${yoyGrow.length?table(['OUTLET','2025 VAL','2026 VAL','DIFF','% VAL'],
+          yoyGrow.slice(0,10).map(r=>{ const pv=yoyPct(r); return [ r[0], numCell(y25VI>=0?fmtRaw(r[y25VI]):fmtRaw(r[2]),''), numCell(y26VI>=0?fmtRaw(r[y26VI]):fmtRaw(r[4]),''), numCell(fmtRaw((pN(y26VI>=0?r[y26VI]:r[4])||0)-(pN(y25VI>=0?r[y25VI]:r[2])||0)),'#166534'), {text:pv!=null?`+${pv.toFixed(1)}%`:'—',style:'text-align:center;font-weight:700;color:#166534'} ]; })
+        ):`<p class="ps-no-data">No YoY grower data</p>`}
+      </div>
+      <div style="flex:1">
+        ${sLabel('DECLINERS',true)}
+        ${yoyDec.length?table(['OUTLET','2025 VAL','2026 VAL','DIFF','% VAL'],
+          yoyDec.slice(0,10).map(r=>{ const pv=yoyPct(r); return [ r[0], numCell(y25VI>=0?fmtRaw(r[y25VI]):fmtRaw(r[2]),''), numCell(y26VI>=0?fmtRaw(r[y26VI]):fmtRaw(r[4]),''), numCell(fmtRaw((pN(y26VI>=0?r[y26VI]:r[4])||0)-(pN(y25VI>=0?r[y25VI]:r[2])||0)),'#DC2626'), {text:pv!=null?`${pv.toFixed(1)}%`:'—',style:'text-align:center;font-weight:700;color:#DC2626'} ]; })
+        ):`<p class="ps-no-data">No decliner data</p>`}
+      </div>
+    </div>
+  </div>`);
+
+  // Slide 16: Utilities
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('','UTILITIES & POWER COST',16)}
+    <div class="ps-body">
+      <div class="ps-kpi-row">${utilD.slice(0,4).map(r=>{ const lbl=String(r[0]||''); const n=pN(r[r.length-1]); const isN=/value|cost/i.test(lbl); const val=n!=null?(isN||n>=1e6?fmtRaw(n):Number(Math.round(n)).toLocaleString()):'—'; return kpiCard(lbl,val,'#ea580c','#FFF7ED','#ea580c'); }).join('')}</div>
+      ${sLabel('UTILITY DETAILS BY MONTH',true)}
+      ${table(['DESCRIPTION','JAN','FEB','MAR','APR','MAY','JUN'],
+        utilD.map(r=>[ r[0], ...[1,2,3,4,5,6].map(ci=>({text:fmtUtil(r[0],r[ci]),style:'text-align:right'})) ])
+      ,true)}
+    </div>
+  </div>`);
+
+  // Slide 17: Action Plan
+  const junePlan=[['1','Launch June Jumbo savings promo','HSO','Jun 15','HIGH','Revenue uplift vs May (125M WOW)'],['2','Urgent intervention for lagging outlets','HSO','Jun 30','HIGH','Restore 3 outlets to 85%+ (Not achieved)'],['3','Deliver 95% manning execution','HSO','Jun 30','HIGH','Improve engagement (Currently 91%)'],['4','Drive Cashier/Bread decline','Ops Mgr','Jun 30','HIGH','Reduce to -10% (Fell to -14%)'],['5','Drive Diesel cost reduction','Ops Mgr','Jun 30','HIGH','Save N15M (Saved N12.7M)'],['6','Follow up Affordability campaign','Category Mgt','Jun 30','HIGH','Perception +8%'],['7','Initiate Corporate sales & hampers','Olufunmi','Jun 15','MED','Expected N20M (Actual N1.5M)'],['8','Drive Chop Beta improved sales','Fisayo','Jun 30','MED','+25% over May (Achieved 100%)']];
+  const julyPlan=[['1','Launch July promotional push','HSO','Jul 15','HIGH','Revenue uplift'],['2','Execute two outlet intervention plans','HSO','Jul 15','HIGH','Restore 3 to 82%+'],['3','Area Coach assessment twice monthly','HSO','Jul 15/30','HIGH','Enhance performance'],['4','Drive Cashier/Bread decline recovery','Ops Mgr','Jul 31','HIGH','Recover to -10%'],['5','Merchandising — rainy season items','Silas','Jul 10','HIGH','Improve visibility'],['6','Execute Chop Beta/Grill campaign','Adio','Jul 10','MED','Enhance 3F revenue'],['7','Cashier manning to 100%','Adio','Jul 15','HIGH','Service delivery'],['8','Deliver 95% manning with HR','Godspower/HSO','Jul 15','HIGH','Customer engagement'],['9','"HERE TO HELP" campaign','HSO','Jul 15','HIGH','Customer excitement']];
+  SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('','PRIORITIES & ACTION PLAN TRACKER',17)}
+    <div class="ps-body ps-split" style="gap:16px;align-items:flex-start">
+      <div style="flex:1">
+        ${sLabel('JUNE 2026 PRIORITIES — REVIEW')}
+        ${table(['#','ACTION ITEM','OWNER','TIME','PRIORITY','IMPACT / RESULT'],
+          junePlan.map(r=>[ {text:r[0],style:'text-align:center;font-weight:700;color:#ea580c'}, r[1], {text:r[2],style:'text-align:center;font-size:0.82em'}, {text:r[3],style:'text-align:center;font-size:0.82em'}, {text:r[4],style:`text-align:center;font-weight:700;color:${r[4]==='HIGH'?'#ea580c':'#6B7280'}`}, {text:r[5],style:'font-size:0.8em;color:#374151'} ])
+        )}
+      </div>
+      <div style="flex:1">
+        ${sLabel('JULY 2026 FORWARD TARGETS',true)}
+        ${table(['#','ACTION ITEM','OWNER','TIME','PRIORITY','IMPACT'],
+          julyPlan.map(r=>[ {text:r[0],style:'text-align:center;font-weight:700;color:#ea580c'}, r[1], {text:r[2],style:'text-align:center;font-size:0.82em'}, {text:r[3],style:'text-align:center;font-size:0.82em'}, {text:r[4],style:`text-align:center;font-weight:700;color:${r[4]==='HIGH'?'#ea580c':'#6B7280'}`}, {text:r[5],style:'font-size:0.8em;color:#374151'} ])
+        ,true)}
+      </div>
+    </div>
+  </div>`);
+
+  // Slide 18: Thank You
+  SLIDES.push(`<div class="ps-slide ps-cover">
+    <div class="ps-cover-bg"></div>
+    <div class="ps-cover-body" style="justify-content:center;gap:16px">
+      ${window._presLogoUrl?`<img src="${window._presLogoUrl}" class="ps-cover-logo" style="max-height:80px" alt="FoodCo"/>`:`<div class="ps-cover-logo-text">FoodCo</div>`}
+      <div class="ps-cover-line" style="width:60%"></div>
+      <div class="ps-cover-title" style="font-size:3.5em">THANK YOU</div>
+      <div class="ps-cover-line"></div>
+      <div class="ps-cover-sub" style="font-size:1.1em">FoodCo Nigeria Limited</div>
+      <div class="ps-cover-role" style="font-size:0.9em">${fullMonth} 2026 Sales Report</div>
+      <div class="ps-cover-presenter" style="margin-top:16px">BIZ YTD Growth: <strong>${yoyFmt(ytdRg?.[3])}</strong> &nbsp;·&nbsp; Global Achievement: <strong>${gAch!=null?gAch.toFixed(1)+'%':'—'}</strong> &nbsp;·&nbsp; Jun YoY: <strong>${yoyFmt(latestRg?.[3])}</strong></div>
+    </div>
+    <div class="ps-cover-footer"></div>
+  </div>`);
+
+  // ── CSS injection ─────────────────────────────────────────────────────────
+  if(!document.getElementById('ps-styles')){
+    const style=document.createElement('style');
+    style.id='ps-styles';
+    style.textContent=`
+      #ps-overlay{position:fixed;inset:0;z-index:99999;background:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+      #ps-frame{position:relative;background:#fff;overflow:hidden;box-shadow:0 8px 48px rgba(0,0,0,.6);}
+      .ps-slide{width:1280px;height:720px;position:relative;background:#fff;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;display:flex;flex-direction:column;}
+      /* Cover */
+      .ps-cover{background:#0D3318;}
+      .ps-cover-bg{position:absolute;inset:0;background:rgba(0,0,0,.42);}
+      .ps-cover-body{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:24px 80px 20px;gap:8px;}
+      .ps-cover-logo{max-height:130px;max-width:380px;object-fit:contain;}
+      .ps-cover-logo-text{font-size:3em;font-weight:900;color:#166534;letter-spacing:2px;}
+      .ps-cover-line{width:70%;height:3px;background:#4ade80;margin:4px 0;}
+      .ps-cover-title{font-size:2.8em;font-weight:900;color:#fff;text-align:center;letter-spacing:1px;line-height:1.15;}
+      .ps-cover-sub{font-size:1.3em;color:#AADDB0;text-align:center;letter-spacing:3px;}
+      .ps-cover-presenter{font-size:1em;color:#fff;text-align:center;}
+      .ps-cover-role{font-size:1em;color:#AADDB0;text-align:center;}
+      .ps-cover-date{font-size:0.85em;color:#AADDB0;text-align:center;}
+      .ps-cover-footer{height:8px;background:#ea580c;position:absolute;bottom:0;left:0;right:0;}
+      /* Tab bar */
+      .ps-tabbar{display:flex;background:#166534;height:44px;flex-shrink:0;}
+      .ps-tab{flex:1;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.78em;font-weight:600;letter-spacing:1.5px;position:relative;}
+      .ps-tab-on{font-weight:900;}
+      .ps-tab-on::after{content:'';position:absolute;bottom:0;left:0;right:0;height:4px;background:#ea580c;}
+      .ps-orange-stripe{height:5px;background:#ea580c;flex-shrink:0;}
+      /* Title row */
+      .ps-titlerow{display:flex;align-items:flex-start;justify-content:space-between;padding:10px 28px 4px;flex-shrink:0;}
+      .ps-title{font-size:1.55em;font-weight:700;color:#00843D;line-height:1.2;}
+      .ps-title-accent{width:56px;height:4px;background:#ea580c;margin-top:4px;}
+      .ps-logo{height:36px;max-width:140px;object-fit:contain;margin-top:2px;}
+      .ps-logo-text{font-size:1em;font-weight:900;color:#166534;margin-top:4px;}
+      .ps-pgnum{position:absolute;bottom:8px;right:16px;font-size:0.72em;color:#9CA3AF;font-weight:600;}
+      /* Body */
+      .ps-body{flex:1;overflow:hidden;padding:6px 28px 28px;display:flex;flex-direction:column;gap:8px;}
+      .ps-split{display:flex;flex-direction:row;gap:16px;flex:1;overflow:hidden;}
+      /* Section label */
+      .ps-slabel{font-size:0.78em;font-weight:800;color:#166534;letter-spacing:1px;flex-shrink:0;}
+      .ps-slabel-bar{width:32px;height:3px;background:#ea580c;margin-top:3px;}
+      .ps-section-tag{font-size:0.72em;font-weight:800;color:#ea580c;letter-spacing:1px;margin-bottom:4px;}
+      /* Tables */
+      .ps-tbl-wrap{overflow:auto;flex:1;min-height:0;}
+      .ps-tbl{width:100%;border-collapse:collapse;font-size:0.8em;}
+      .ps-tbl thead th{background:#166534;color:#fff;padding:5px 7px;text-align:left;font-size:0.9em;letter-spacing:.5px;white-space:nowrap;}
+      .ps-tbl tbody td{padding:4px 7px;color:#374151;border-bottom:1px solid #E5E7EB;white-space:nowrap;}
+      .ps-tbl tbody tr.ps-alt td{background:#F9FAFB;}
+      .ps-tbl tbody tr:hover td{background:#F0FDF4;}
+      /* KPI cards */
+      .ps-kpi-row{display:flex;gap:10px;flex-shrink:0;}
+      .ps-kpi-card{flex:1;border:2px solid;border-radius:4px;padding:10px 12px;min-width:0;}
+      .ps-kpi-label{font-size:0.68em;color:#6B7280;font-weight:600;letter-spacing:.5px;margin-bottom:4px;}
+      .ps-kpi-val{font-size:1.55em;font-weight:900;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      /* Global KPI box */
+      .ps-global-kpi{width:186px;flex-shrink:0;border-radius:4px;padding:14px;text-align:center;}
+      .ps-gkpi-label{font-size:0.68em;color:#6B7280;font-weight:600;letter-spacing:.5px;}
+      .ps-gkpi-val{font-size:2.8em;font-weight:900;line-height:1.1;}
+      .ps-gkpi-status{font-size:0.8em;font-weight:700;margin-top:2px;}
+      .ps-gkpi-detail{font-size:0.7em;color:#6B7280;margin-top:8px;line-height:1.5;}
+      /* Region cards */
+      .ps-region-cards{display:flex;gap:12px;flex-shrink:0;margin-bottom:8px;}
+      .ps-region-card{flex:1;border-radius:4px;padding:12px 14px;}
+      .ps-reg-name{font-size:0.9em;font-weight:800;letter-spacing:.5px;}
+      .ps-reg-pct{font-size:2.4em;font-weight:900;line-height:1.15;text-align:center;margin:4px 0;}
+      .ps-reg-detail{font-size:0.72em;color:#6B7280;line-height:1.5;}
+      /* Exec overview */
+      .ps-exec-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12px;flex:1;}
+      .ps-exec-card{border-radius:4px;padding:16px 20px;}
+      .ps-exec-num{font-size:2.2em;font-weight:900;line-height:1;}
+      .ps-exec-name{font-size:1.1em;font-weight:800;margin:2px 0 6px;}
+      .ps-exec-desc{font-size:0.82em;color:#374151;line-height:1.5;}
+      /* Bar chart */
+      .ps-chart-wrap{display:flex;flex-direction:column;height:100%;}
+      .ps-chart-title{font-size:0.72em;color:#6B7280;margin-bottom:6px;text-align:center;}
+      .ps-bars{display:flex;align-items:flex-end;flex:1;gap:8px;border-bottom:2px solid #E5E7EB;padding-bottom:4px;}
+      .ps-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;height:100%;}
+      .ps-bar-val{font-size:0.62em;color:#166534;font-weight:700;margin-bottom:2px;}
+      .ps-bar-body{width:70%;background:#166534;border-radius:3px 3px 0 0;transition:height .3s;}
+      .ps-bar-lbl{font-size:0.62em;color:#6B7280;margin-top:4px;}
+      /* Insights */
+      .ps-insights{display:flex;flex-direction:column;gap:12px;padding-left:8px;}
+      .ps-insight-title{font-size:0.9em;font-weight:800;color:#00843D;margin-bottom:4px;}
+      .ps-insight-item{display:flex;gap:8px;align-items:flex-start;font-size:0.8em;color:#374151;line-height:1.45;}
+      .ps-insight-dot{width:4px;min-width:4px;height:100%;min-height:32px;border-radius:2px;margin-top:2px;}
+      /* Week cards */
+      .ps-week-cards{display:flex;gap:10px;flex-shrink:0;margin-bottom:8px;}
+      .ps-week-card{flex:1;border-radius:4px;padding:10px;text-align:center;}
+      .ps-wk-lbl{font-size:0.68em;color:#6B7280;margin-bottom:4px;}
+      .ps-wk-sales{font-size:1.4em;font-weight:900;}
+      .ps-wk-ads{font-size:0.72em;margin-top:2px;}
+      /* Dept comparison */
+      .ps-dept-header{background:#166534;color:#fff;padding:8px 12px;font-weight:800;font-size:0.9em;border-radius:3px 3px 0 0;letter-spacing:.5px;}
+      /* Insight banner */
+      .ps-insight-banner{background:#F0FDF4;border:1px solid #166534;border-radius:3px;padding:8px 12px;font-size:0.78em;color:#374151;flex-shrink:0;}
+      .ps-no-data{color:#9CA3AF;font-style:italic;font-size:0.85em;padding:16px 0;}
+      /* Navigation */
+      #ps-controls{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:rgba(0,0,0,.75);border-radius:40px;padding:8px 20px;z-index:100000;}
+      #ps-controls button{background:none;border:none;color:#fff;font-size:1.1em;cursor:pointer;padding:4px 8px;border-radius:4px;transition:background .15s;}
+      #ps-controls button:hover{background:rgba(255,255,255,.15);}
+      #ps-counter{color:#ccc;font-size:0.85em;min-width:60px;text-align:center;}
+      #ps-close{position:fixed;top:14px;right:18px;z-index:100001;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:1.1em;cursor:pointer;border-radius:50%;width:36px;height:36px;}
+      #ps-close:hover{background:rgba(234,88,12,.85);}
+      #ps-progress{position:fixed;top:0;left:0;height:3px;background:#ea580c;transition:width .25s;z-index:100001;}
+    `;
+    document.head.appendChild(style);
+  }
+
+  // ── DOM assembly ──────────────────────────────────────────────────────────
+  const overlay=document.createElement('div'); overlay.id='ps-overlay';
+  const frame=document.createElement('div'); frame.id='ps-frame';
+  const progress=document.createElement('div'); progress.id='ps-progress';
+  const controls=document.createElement('div'); controls.id='ps-controls';
+  controls.innerHTML=`<button id="ps-prev">&#8592;</button><button id="ps-first">&#8676;</button><span id="ps-counter">1/${SLIDES.length}</span><button id="ps-last">&#8677;</button><button id="ps-next">&#8594;</button>`;
+  const closeBtn=document.createElement('button'); closeBtn.id='ps-close'; closeBtn.innerHTML='&#10005;';
+  overlay.appendChild(progress); overlay.appendChild(frame); overlay.appendChild(controls); overlay.appendChild(closeBtn);
+  document.body.appendChild(overlay);
+
+  // ── Scale to viewport ─────────────────────────────────────────────────────
+  function scaleFrame(){
+    const scX=window.innerWidth/1280, scY=window.innerHeight/720;
+    const sc=Math.min(scX,scY)*0.96;
+    frame.style.cssText=`width:1280px;height:720px;transform:scale(${sc});transform-origin:center center;`;
+  }
+  scaleFrame();
+  window.addEventListener('resize',scaleFrame);
+
+  // ── Slide navigation ──────────────────────────────────────────────────────
+  let cur=0;
+  function goTo(n){
+    cur=Math.max(0,Math.min(SLIDES.length-1,n));
+    frame.innerHTML=SLIDES[cur];
+    // Re-resolve logo if it loaded after build
+    if(window._presLogoUrl){
+      frame.querySelectorAll('.ps-cover-logo,.ps-logo').forEach(el=>{if(el.tagName==='IMG')el.src=window._presLogoUrl;});
+    }
+    document.getElementById('ps-counter').textContent=`${cur+1}/${SLIDES.length}`;
+    progress.style.width=`${((cur+1)/SLIDES.length)*100}%`;
+  }
+  goTo(0);
+  document.getElementById('ps-prev').onclick=()=>goTo(cur-1);
+  document.getElementById('ps-next').onclick=()=>goTo(cur+1);
+  document.getElementById('ps-first').onclick=()=>goTo(0);
+  document.getElementById('ps-last').onclick=()=>goTo(SLIDES.length-1);
+  closeBtn.onclick=()=>{ document.body.removeChild(overlay); window.removeEventListener('resize',scaleFrame); document.removeEventListener('keydown',keyHandler); };
+  function keyHandler(e){
+    if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' ') goTo(cur+1);
+    else if(e.key==='ArrowLeft'||e.key==='ArrowUp') goTo(cur-1);
+    else if(e.key==='Escape') closeBtn.onclick();
+    else if(e.key==='Home') goTo(0);
+    else if(e.key==='End') goTo(SLIDES.length-1);
+  }
+  document.addEventListener('keydown',keyHandler);
+  // Click right half = next, left half = prev
+  frame.addEventListener('click',e=>{ if(e.offsetX>640) goTo(cur+1); else goTo(cur-1); });
+};
+
 // Global tab switcher for exec report — must be global because onclick= in innerHTML can't see closure scope
 window.erSwitchTab = function(id, btn) {
   document.querySelectorAll('.er-tab-panel').forEach(p => p.classList.remove('active'));
@@ -4670,6 +5306,7 @@ function renderExecReport(data) {
         <div class="er-gen-date">Generated: ${now}</div>
         <button class="btn-ghost" onclick="window.print()" style="font-size:0.78rem;margin-top:4px;">🖨 Print</button>
         <button class="btn-primary" id="dlPptxBtn" onclick="window.downloadAsPptx()" style="font-size:0.78rem;margin-top:4px;padding:4px 12px;">⬇ Download PPTX</button>
+        <button class="btn-primary" onclick="window.presentReport()" style="font-size:0.78rem;margin-top:4px;padding:4px 12px;background:#ea580c;border-color:#ea580c;">▶ Present Slides</button>
       </div>
     </div>
 
