@@ -13,3 +13,6 @@ Thumbs.db
 
 # Local video asset (too large for git)
 hero-bg.mp4
+
+.vercel
+.env*

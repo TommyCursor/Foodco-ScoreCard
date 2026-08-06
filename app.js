@@ -3135,27 +3135,48 @@ window.downloadAsPptx = async function() {
       const n=_normPct(v); if(n===null) return '—';
       return n>=100?'GREAT':n>=90?'STABLE':n>=80?'WEAK':'CONCERNING';
     }
+    // Table helpers — Liter 12 headers, Quattrocento Sans 9 body
     function _hdr(cols, bg=C.green) {
-      return cols.map(t=>({ text:String(t||''), options:{ bold:true,color:C.white,fill:{color:bg},align:'center',valign:'middle',fontSize:9,border:{pt:0.5,color:'FFFFFF'} } }));
+      return cols.map(t=>({ text:String(t||''), options:{ bold:true,color:C.white,fill:{color:bg},align:'center',valign:'middle',fontSize:12,fontFace:'Liter',border:{pt:0.5,color:'FFFFFF'} } }));
     }
-    function _cell(t, opts={}) { return { text:t==null?'—':String(t), options:{fontSize:9,valign:'middle',...opts} }; }
+    function _cell(t, opts={}) { return { text:t==null?'—':String(t), options:{fontSize:9,fontFace:'Quattrocento Sans',valign:'middle',...opts} }; }
     function _numCell(t, opts={}) { return _cell(t,{align:'right',...opts}); }
-    function _totRow(cols) { return cols.map((t,i)=>_cell(t==null?'—':String(t),{bold:true,align:i>0?'right':'left',fill:{color:C.greatBg}})); }
+    function _totRow(cols) { return cols.map((t,i)=>_cell(t==null?'—':String(t),{bold:true,fontFace:'Quattrocento Sans',align:i>0?'right':'left',fill:{color:C.greatBg}})); }
 
-    function addHeaderBar(slide, title, sub='') {
-      slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:0.85,fill:{color:C.green}});
-      slide.addShape(pptx.ShapeType.rect,{x:0,y:0.85,w:W,h:0.07,fill:{color:C.orange}});
-      slide.addText(title,{x:0.3,y:0.08,w:10,h:0.62,fontSize:19,bold:true,color:C.white,valign:'middle'});
-      if(sub) slide.addText(sub,{x:10.5,y:0.08,w:2.5,h:0.62,fontSize:11,color:'AADDB0',align:'right',valign:'middle'});
+    const _TABS = ['REVENUE','GROWTH','OUTLETS','CATEGORY','COMPARISON'];
+    const _TAB_W = W / _TABS.length;
+    const DG_ALL = '00843D';
+
+    // Shared tab-bar header for slides 4–11
+    function addTabHeader(slide, activeTab, title, pgNum) {
+      // Green tab bar
+      slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:0.62,fill:{color:C.green}});
+      _TABS.forEach((t,i)=>{
+        const act = t===activeTab;
+        slide.addText(t,{x:i*_TAB_W,y:0,w:_TAB_W,h:0.62,fontSize:16,color:C.white,align:'center',valign:'middle',fontFace:'Liter',bold:act});
+        if(act) slide.addShape(pptx.ShapeType.rect,{x:i*_TAB_W,y:0.58,w:_TAB_W,h:0.05,fill:{color:C.orange}});
+      });
+      // Orange accent rule
+      slide.addShape(pptx.ShapeType.rect,{x:0,y:0.62,w:W,h:0.06,fill:{color:C.orange}});
+      // Title — Liter 36, Dark Green
+      slide.addText(title,{x:0.28,y:0.76,w:10.5,h:0.62,fontSize:36,bold:false,color:DG_ALL,fontFace:'Liter',valign:'middle'});
+      // Orange underline
+      slide.addShape(pptx.ShapeType.rect,{x:0.28,y:1.32,w:1.1,h:0.05,fill:{color:C.orange}});
+      // Logo top-right
+      if(logoDataUrl) slide.addImage({data:logoDataUrl,x:11.2,y:0.72,w:1.9,h:0.54});
+      // Page number — Liter 12
+      slide.addText(String(pgNum).padStart(2,'0'),{x:W-0.5,y:H-0.4,w:0.4,h:0.35,fontSize:12,color:C.gray,align:'right',fontFace:'Liter'});
     }
+
     function sectionLabel(slide, text, x, y, w, orange=false) {
-      slide.addText(text,{x,y,w,h:0.35,fontSize:12,bold:true,color:orange?C.orange:C.green});
+      slide.addText(text,{x,y,w,h:0.35,fontSize:12,bold:true,color:orange?C.orange:C.green,fontFace:'Liter'});
       slide.addShape(pptx.ShapeType.rect,{x,y:y+0.33,w:0.45,h:0.04,fill:{color:C.orange}});
     }
+    // KPI box — label: Quattrocento Sans 14, value: Liter 48
     function kpiBox(slide, x, y, w, h, label, val, valColor, bg, borderColor) {
       slide.addShape(pptx.ShapeType.rect,{x,y,w,h,fill:{color:bg},line:{color:borderColor,pt:1.5}});
-      slide.addText(label,{x:x+0.12,y:y+0.1,w:w-0.24,h:0.3,fontSize:9,color:C.gray,bold:true});
-      slide.addText(val,{x:x+0.12,y:y+0.42,w:w-0.24,h:h-0.6,fontSize:20,bold:true,color:valColor,align:'center',valign:'middle'});
+      slide.addText(label,{x:x+0.12,y:y+0.1,w:w-0.24,h:0.3,fontSize:14,color:C.gray,bold:false,fontFace:'Quattrocento Sans'});
+      slide.addText(val,{x:x+0.08,y:y+0.42,w:w-0.16,h:h-0.58,fontSize:48,bold:true,color:valColor,align:'center',valign:'middle',fontFace:'Liter'});
     }
 
     // ── Parse data ───────────────────────────────────────────────────────────
@@ -3359,24 +3380,27 @@ window.downloadAsPptx = async function() {
       s.addShape(pptx.ShapeType.rect,{x:0,y:0.62,w:W,h:0.06,fill:{color:C.orange}});
 
       // Derive monthly revenue metrics
+      // businessYTD stores values in BILLIONS (3.28 = N3.28B), not millions
       const revMs  = ytdMonths.filter(r=>_pN(r[1])!==null);
-      const revVs  = revMs.map(r=>_pN(r[1]));
+      const revVs  = revMs.map(r=>_pN(r[1]));   // already in billions
       const revLbs = revMs.map(r=>String(r[0]||'').toUpperCase());
       const ytdTot = _pN(ytdRowD?.[1]) ?? revVs.reduce((a,b)=>a+b,0);
       const lastV  = revVs[revVs.length-1];
       const prevV  = revVs[revVs.length-2];
       const peakI  = revVs.length ? revVs.indexOf(Math.max(...revVs)) : -1;
-      const peakLb = peakI>=0 ? (_MFULL[revLbs[peakI]]||revLbs[peakI]) : '';
+      const peakLb = peakI>=0 ? (_MFULL[revLbs[peakI]]||revLbs[peakI]||revLbs[peakI]) : '';
       const peakVV = peakI>=0 ? revVs[peakI] : null;
       const momR   = (prevV&&lastV) ? (lastV-prevV)/prevV*100 : null;
       const q1a    = revVs.slice(0,3).length ? revVs.slice(0,3).reduce((a,b)=>a+b,0)/3 : null;
       const q2a    = revVs.slice(3,6).length ? revVs.slice(3,6).reduce((a,b)=>a+b,0)/revVs.slice(3,6).length : null;
       const prevLb = _MFULL[revLbs[revVs.length-2]]||revLbs[revVs.length-2]||'Prev';
+      // Formatter for values already in billions
+      function _fmtBil(v){const n=_pN(v);if(n===null)return '—';return Math.abs(n)>=1?`N${Math.abs(n).toFixed(2)}B`:`N${(Math.abs(n)*1000).toFixed(0)}M`;}
 
       const DG='00843D'; // Dark Green RGB(0,132,61) — exact brand colour for slide 3 text
 
       // Dynamic title — Liter 36, not bold, Dark Green
-      s.addText(`YTD Revenue ${_fmtBig(ytdTot)} with ${fullMonth} at ${_fmtBig(lastV)}`,{
+      s.addText(`YTD Revenue ${_fmtBil(ytdTot)} with ${fullMonth} at ${_fmtBil(lastV)}`,{
         x:0.28,y:0.76,w:10.5,h:0.62,fontSize:36,bold:false,color:DG,fontFace:'Liter',valign:'middle'});
       s.addShape(pptx.ShapeType.rect,{x:0.28,y:1.32,w:1.1,h:0.05,fill:{color:C.orange}});
       if(logoDataUrl) s.addImage({data:logoDataUrl,x:11.2,y:0.72,w:1.9,h:0.54});
@@ -3384,12 +3408,13 @@ window.downloadAsPptx = async function() {
 
       // 4 KPI boxes — label: Quattrocento Sans 14, value: Liter 48 Bold
       const kpis3=[
-        {lbl:`${fullMonth.toUpperCase()} REVENUE`, val:_fmtBig(lastV),                        col:C.green,  bg:C.lgreenBg,  bd:C.green},
-        {lbl:'YTD REVENUE',                        val:_fmtBig(ytdTot),                       col:C.green,  bg:C.lgreenBg,  bd:C.green},
-        {lbl:'PEAK MONTH',                         val:`${peakLb} ${_fmtBig(peakVV)}`,        col:C.orange, bg:C.lorangeBg, bd:C.orange},
+        {lbl:`${fullMonth.toUpperCase()} REVENUE`, val:_fmtBil(lastV),                                   sz:48, col:C.green,  bg:C.lgreenBg,  bd:C.green},
+        {lbl:'YTD REVENUE',                        val:_fmtBil(ytdTot),                                   sz:48, col:C.green,  bg:C.lgreenBg,  bd:C.green},
+        // PEAK MONTH: split to 2 lines so "MAY N3.62B" fits at 48pt
+        {lbl:'PEAK MONTH',                         val:`${(peakLb||'').toUpperCase()}\n${_fmtBil(peakVV)}`,sz:36, col:C.orange, bg:C.lorangeBg, bd:C.orange},
         {lbl:`${fullMonth.toUpperCase()} vs ${prevLb.toUpperCase()}`,
                                                    val:momR!=null?`${momR>=0?'+':''}${momR.toFixed(1)}%`:'—',
-                                                   col:momR!=null&&momR>=0?C.green:C.concern, bg:'FEF2F2',  bd:C.concern},
+                                                                                                           sz:48, col:momR!=null&&momR>=0?C.green:C.concern, bg:'FEF2F2', bd:C.concern},
       ];
       const kbw=(W-0.56-0.3)/4;
       kpis3.forEach((k,i)=>{
@@ -3397,13 +3422,13 @@ window.downloadAsPptx = async function() {
         s.addShape(pptx.ShapeType.rect,{x:kx,y:ky,w:kbw,h:1.35,fill:{color:k.bg},line:{color:k.bd,pt:1.2}});
         // Label — Quattrocento Sans 14, not bold, grey
         s.addText(k.lbl,{x:kx+0.12,y:ky+0.1,w:kbw-0.24,h:0.34,fontSize:14,bold:false,color:C.gray,fontFace:'Quattrocento Sans'});
-        // Value — Liter 48, bold, status colour
-        s.addText(k.val,{x:kx+0.08,y:ky+0.46,w:kbw-0.16,h:0.78,fontSize:48,bold:true,color:k.col,align:'center',valign:'middle',fontFace:'Liter'});
+        // Value — Liter (size varies), bold, status colour
+        s.addText(k.val,{x:kx+0.08,y:ky+0.44,w:kbw-0.16,h:0.82,fontSize:k.sz,bold:true,color:k.col,align:'center',valign:'middle',fontFace:'Liter'});
       });
 
       // Bar chart — left 70%
       if(revVs.length){
-        s.addChart(pptx.ChartType.bar,[{name:'Revenue',labels:revLbs,values:revVs.map(v=>+(v/1000).toFixed(3))}],{
+        s.addChart(pptx.ChartType.bar,[{name:'Revenue',labels:revLbs,values:revVs.map(v=>+(_pN(v)||0).toFixed(2))}],{
           x:0.28,y:2.95,w:8.8,h:4.28,
           barDir:'col', barGapWidthPct:55,
           chartColors:['166534'],
@@ -3422,9 +3447,9 @@ window.downloadAsPptx = async function() {
       // Heading — Liter 22, bold, Dark Green
       s.addText('KEY INSIGHTS',{x:ix,y:iy0,w:iw,h:0.46,fontSize:22,bold:true,color:DG,fontFace:'Liter'});
       const ins3=[
-        peakLb&&peakVV ? [[{text:`${peakLb} 2026 `,options:{bold:true,color:DG,fontFace:'Quattrocento Sans'}},{text:'was the peak revenue month at ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(peakVV),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
-        momR!=null      ? [[{text:fullMonth,options:{bold:true,color:C.concern,fontFace:'Quattrocento Sans'}},{text:` ${momR<0?'declined':'grew'} ${Math.abs(momR).toFixed(1)}% from ${prevLb} to `,options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(lastV),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
-        q1a&&q2a        ? [[{text:'Q2 average: ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(q2a),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:' vs Q1 average: ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(q1a),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
+        peakLb&&peakVV ? [[{text:`${peakLb} 2026 `,options:{bold:true,color:DG,fontFace:'Quattrocento Sans'}},{text:'was the peak revenue month at ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBil(peakVV),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
+        momR!=null      ? [[{text:fullMonth,options:{bold:true,color:C.concern,fontFace:'Quattrocento Sans'}},{text:` ${momR<0?'declined':'grew'} ${Math.abs(momR).toFixed(1)}% from ${prevLb} to `,options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBil(lastV),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
+        q1a&&q2a        ? [[{text:'Q2 average: ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBil(q2a),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:' vs Q1 average: ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBil(q1a),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
       ].filter(Boolean);
       // Body — Quattrocento Sans 28, mixed bold
       ins3.forEach((runs,i)=>{
@@ -3437,7 +3462,7 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 4: Growth ────────────────────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addHeaderBar(s,'REVENUE & GROWTH',label);
+      addTabHeader(s,'GROWTH','REVENUE & GROWTH',4);
       const kpis=[
         {lbl:`${latestRg?.[0]||''} VALUE YoY`, v:latestRg?.[3], orange:false},
         {lbl:`${latestRg?.[0]||''} VOLUME YoY`,v:latestRg?.[4], orange:false},
@@ -3447,23 +3472,30 @@ window.downloadAsPptx = async function() {
       const kw2=12.9/kpis.length-0.12;
       kpis.forEach((k,i)=>{
         const x=0.2+i*(kw2+0.12), n=_pN(k.v);
-        kpiBox(s,x,1.0,kw2,1.4,k.lbl,n!=null?`${n>=0?'+':''}${n.toFixed(1)}%`:'—',n>=0?C.green:C.concern,k.orange?C.lorangeBg:C.lgreenBg,k.orange?C.orange:C.green);
+        kpiBox(s,x,1.48,kw2,1.35,k.lbl,n!=null?`${n>=0?'+':''}${n.toFixed(1)}%`:'—',n>=0?C.green:C.concern,k.orange?C.lorangeBg:C.lgreenBg,k.orange?C.orange:C.green);
       });
-      sectionLabel(s,'MONTHLY GROWTH PERFORMANCE',0.2,2.6,9);
+      sectionLabel(s,'MONTHLY GROWTH PERFORMANCE',0.28,3.0,9);
       if(rgRows.length){
         const tblR=[
-          _hdr(['Period','2026 (M)','2025 (M)','Val YoY%','Vol YoY%','Same Store%']),
+          _hdr(['PERIOD','2026 (M)','2025 (M)','VAL YoY%','VOL YoY%','SAME STORE%']),
           ...rgRows.map(r=>{
             const isY=/ytd/i.test(r[0]);
-            const fn=isY?_totRow:cols=>cols.map((t,i)=>_cell(t,{align:i>0?'right':'left'}));
+            const fn=isY?_totRow:cols=>cols.map((t,j)=>_cell(t,{align:j>0?'right':'left'}));
             const v3=_pN(r[3]),v4=_pN(r[4]),v5=_pN(r[5]);
-            return fn([r[0],r[1]?Number(r[1]).toLocaleString():'—',r[2]?Number(r[2]).toLocaleString():'—',
+            const c3=v3!=null?(v3>=0?C.green:C.concern):null;
+            const c4=v4!=null?(v4>=0?C.green:C.concern):null;
+            const c5=v5!=null?(v5>=0?C.green:C.concern):null;
+            if(isY) return _totRow([r[0],r[1]?Number(r[1]).toLocaleString():'—',r[2]?Number(r[2]).toLocaleString():'—',
               v3!=null?`${v3>=0?'+':''}${v3.toFixed(1)}%`:'—',
               v4!=null?`${v4>=0?'+':''}${v4.toFixed(1)}%`:'—',
               v5!=null?`${v5>=0?'+':''}${v5.toFixed(1)}%`:'—']);
+            return [_cell(r[0]),_numCell(r[1]?Number(r[1]).toLocaleString():'—'),_numCell(r[2]?Number(r[2]).toLocaleString():'—'),
+              _numCell(v3!=null?`${v3>=0?'+':''}${v3.toFixed(1)}%`:'—',{bold:true,color:c3||C.dkgray}),
+              _numCell(v4!=null?`${v4>=0?'+':''}${v4.toFixed(1)}%`:'—',{bold:true,color:c4||C.dkgray}),
+              _numCell(v5!=null?`${v5>=0?'+':''}${v5.toFixed(1)}%`:'—',{bold:true,color:c5||C.dkgray})];
           }),
         ];
-        s.addTable(tblR,{x:0.2,y:3.05,w:12.9,colW:[1.9,2.2,2.2,2.2,2.2,2.2],border:{pt:0.3,color:'DDDDDD'}});
+        s.addTable(tblR,{x:0.28,y:3.42,w:12.9,colW:[1.9,2.2,2.2,2.2,2.2,2.2],border:{pt:0.3,color:'DDDDDD'}});
       }
     }
 
@@ -3471,13 +3503,18 @@ window.downloadAsPptx = async function() {
     {
       const s = pptx.addSlide();
       const gAch=_normPct(globalOutlet?.[5]??globalOutlet?.[4]);
-      addHeaderBar(s,`OUTLET PERFORMANCE  ·  ${gAch?gAch.toFixed(1)+'% of Target':''}`,label);
+      const gCol=gAch>=90?C.green:gAch>=80?C.weak:C.concern;
+      const gBg =gAch>=90?C.lgreenBg:gAch>=80?C.weakBg:C.concernBg;
+      addTabHeader(s,'OUTLETS',`OUTLET PERFORMANCE${gAch?'  ·  '+gAch.toFixed(1)+'% of Target':''}`,5);
+      // Global achievement KPI box — Liter 36 bold, status colour
       if(globalOutlet){
-        const col=gAch>=90?C.green:gAch>=80?C.weak:C.concern;
-        s.addShape(pptx.ShapeType.rect,{x:0.2,y:1.0,w:2.5,h:1.4,fill:{color:C.lgreenBg},line:{color:col,pt:2}});
-        s.addText('GLOBAL ACHIEVEMENT',{x:0.3,y:1.1,w:2.3,h:0.3,fontSize:8,bold:true,color:C.gray});
-        s.addText(`${gAch?.toFixed(1)}%`,{x:0.3,y:1.4,w:2.3,h:0.75,fontSize:28,bold:true,color:col,align:'center'});
+        const gx=0.28, gy=1.48, gw=2.4, gh=1.35;
+        s.addShape(pptx.ShapeType.rect,{x:gx,y:gy,w:gw,h:gh,fill:{color:gBg},line:{color:gCol,pt:2}});
+        s.addText('GLOBAL ACHIEVEMENT',{x:gx+0.1,y:gy+0.1,w:gw-0.2,h:0.3,fontSize:9,bold:false,color:C.gray,fontFace:'Quattrocento Sans'});
+        s.addText(`${gAch?.toFixed(1)}%`,{x:gx+0.1,y:gy+0.42,w:gw-0.2,h:0.75,fontSize:36,bold:true,color:gCol,align:'center',fontFace:'Liter'});
+        s.addText(_statusLabel(globalOutlet[5]),{x:gx+0.5,y:gy+gh-0.35,w:gw-1,h:0.28,fontSize:9,bold:true,color:gCol,align:'center',fontFace:'Quattrocento Sans',fill:{color:gBg}});
       }
+      // Outlet table — starts beside global KPI
       const outTbl=[
         _hdr(['OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS']),
         ...(globalOutlet?[[
@@ -3488,52 +3525,52 @@ window.downloadAsPptx = async function() {
           _cell(`${_normPct(globalOutlet[5])?.toFixed(1)||'—'}%`,{bold:true,align:'center',fill:{color:C.greatBg},color:_statusColor(globalOutlet[5])[0]}),
           _cell(_statusLabel(globalOutlet[5]),{bold:true,align:'center',fill:{color:_statusColor(globalOutlet[5])[1]},color:_statusColor(globalOutlet[5])[0]}),
         ]]:[]),
-        ...outletRows_d.slice(0,20).map(r=>{
+        ...outletRows_d.slice(0,18).map(r=>{
           const pv=_normPct(r[5]); const [sc,sbg]=_statusColor(r[5]);
           return [_cell(r[0]),_numCell(_fmtRaw(r[1])),_numCell(_fmtRaw(r[2])),_numCell(_fmtRaw(r[4])),
-            _cell(pv!=null?`${pv.toFixed(1)}%`:'—',{align:'center',color:sc}),
-            _cell(_statusLabel(r[5]),{align:'center',fill:{color:sbg},color:sc})];
+            _cell(pv!=null?`${pv.toFixed(1)}%`:'—',{align:'center',bold:true,color:sc}),
+            _cell(_statusLabel(r[5]),{align:'center',fill:{color:sbg},color:sc,bold:true})];
         }),
       ];
-      s.addTable(outTbl,{x:0.2,y:1.0,w:12.9,colW:[2.4,2.3,2.3,2.3,1.5,2.1],border:{pt:0.3,color:'DDDDDD'},fontSize:8});
+      s.addTable(outTbl,{x:2.88,y:1.48,w:10.22,colW:[2.2,2.0,2.0,1.8,1.3,0.92],border:{pt:0.3,color:'DDDDDD'}});
     }
 
     // ── SLIDE 6: Regional Performance ─────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addHeaderBar(s,'REGIONAL PERFORMANCE',label);
+      addTabHeader(s,'OUTLETS','REGIONAL PERFORMANCE',6);
       if(regions_d.length){
-        const rw=Math.min(4.2,(W-0.6)/regions_d.length);
+        const rw=Math.min(4.2,(W-0.56)/regions_d.length);
         regions_d.forEach((r,i)=>{
           const pv=_normPct(r[5]??r[4]);
           const col=pv>=90?C.green:pv>=80?C.weak:C.concern;
           const bg=pv>=90?'F0FDF4':pv>=80?'FEF3C7':'FEE2E2';
-          const x=0.2+i*(rw+0.12);
-          s.addShape(pptx.ShapeType.rect,{x,y:1.05,w:rw,h:2.6,fill:{color:bg},line:{color:col,pt:1.5}});
-          s.addShape(pptx.ShapeType.rect,{x,y:1.05,w:0.1,h:2.6,fill:{color:col}});
-          s.addText(r[0],{x:x+0.2,y:1.15,w:rw-0.3,h:0.5,fontSize:15,bold:true,color:col});
-          s.addText(`${pv?.toFixed(0)}%`,{x:x+0.2,y:1.7,w:rw-0.3,h:1.0,fontSize:34,bold:true,color:col,align:'center'});
-          s.addText(`Target: ${_fmtRaw(r[3])}`,{x:x+0.2,y:2.8,w:rw-0.3,h:0.28,fontSize:9,color:C.dkgray});
-          s.addText(`Actual: ${_fmtRaw(r[2])}`,{x:x+0.2,y:3.1,w:rw-0.3,h:0.28,fontSize:9,color:C.dkgray});
+          const x=0.28+i*(rw+0.08);
+          s.addShape(pptx.ShapeType.rect,{x,y:1.48,w:rw,h:2.5,fill:{color:bg},line:{color:col,pt:1.5}});
+          s.addShape(pptx.ShapeType.rect,{x,y:1.48,w:0.1,h:2.5,fill:{color:col}});
+          s.addText(r[0],{x:x+0.2,y:1.58,w:rw-0.3,h:0.42,fontSize:15,bold:true,color:col,fontFace:'Liter'});
+          s.addText(`${pv?.toFixed(0)}%`,{x:x+0.2,y:2.02,w:rw-0.3,h:1.0,fontSize:34,bold:true,color:col,align:'center',fontFace:'Liter'});
+          s.addText(`Target: ${_fmtRaw(r[3])}`,{x:x+0.2,y:3.08,w:rw-0.3,h:0.25,fontSize:9,color:C.dkgray,fontFace:'Quattrocento Sans'});
+          s.addText(`Actual: ${_fmtRaw(r[2])}`,{x:x+0.2,y:3.35,w:rw-0.3,h:0.25,fontSize:9,color:C.dkgray,fontFace:'Quattrocento Sans'});
         });
-        sectionLabel(s,'REGIONAL SALES SUMMARY',0.2,3.85,9);
+        sectionLabel(s,'REGIONAL SALES SUMMARY',0.28,4.12,9);
         const regTbl=[
           _hdr(['REGION','ACTUAL SALES','TARGET','DIFF','ACH%','STATUS']),
           ...regions_d.map(r=>{
             const pv=_normPct(r[5]??r[4]); const [sc,sbg]=_statusColor(r[5]??r[4]);
             return [_cell(r[0]),_numCell(_fmtRaw(r[2])),_numCell(_fmtRaw(r[3])),_numCell(_fmtRaw(r[4])),
               _cell(pv!=null?`${pv.toFixed(1)}%`:'—',{align:'center',color:sc,bold:true}),
-              _cell(_statusLabel(r[5]??r[4]),{align:'center',fill:{color:sbg},color:sc})];
+              _cell(_statusLabel(r[5]??r[4]),{align:'center',fill:{color:sbg},color:sc,bold:true})];
           }),
         ];
-        s.addTable(regTbl,{x:0.2,y:4.25,w:12.9,colW:[2.2,2.6,2.6,2.6,1.6,1.3],border:{pt:0.3,color:'DDDDDD'}});
+        s.addTable(regTbl,{x:0.28,y:4.54,w:12.9,colW:[2.2,2.6,2.6,2.6,1.6,1.3],border:{pt:0.3,color:'DDDDDD'}});
       }
     }
 
     // ── SLIDE 7: Area Leaders ──────────────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addHeaderBar(s,'AREA LEADERS PERFORMANCE',label);
+      addTabHeader(s,'OUTLETS','AREA LEADERS PERFORMANCE',7);
       if(areaGrouped_d.length){
         const areaTbl=[
           _hdr(['LEADER','OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS']),
@@ -3552,16 +3589,16 @@ window.downloadAsPptx = async function() {
             ];
           }),
         ];
-        s.addTable(areaTbl,{x:0.2,y:1.0,w:12.9,colW:[1.7,1.8,2.0,2.0,2.0,1.6,1.8],border:{pt:0.3,color:'DDDDDD'},fontSize:8});
+        s.addTable(areaTbl,{x:0.28,y:1.48,w:12.9,colW:[1.7,1.8,2.0,2.0,2.0,1.6,1.8],border:{pt:0.3,color:'DDDDDD'}});
       }
     }
 
     // ── SLIDE 8: Category Sales YTD ────────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addHeaderBar(s,'CATEGORY SALES YTD',label);
+      addTabHeader(s,'CATEGORY','CATEGORY SALES YTD',8);
       if(catYTDRows_d.length&&catYTDCols_d.length){
-        sectionLabel(s,'DEPARTMENT PERFORMANCE BY MONTH',0.2,1.0,10);
+        sectionLabel(s,'DEPARTMENT PERFORMANCE BY MONTH',0.28,1.42,10);
         const cw=[2.5,...catYTDCols_d.map(()=>+(10.4/catYTDCols_d.length).toFixed(3))];
         const catTbl=[
           _hdr(['DEPARTMENT',...catYTDCols_d]),
@@ -3571,11 +3608,11 @@ window.downloadAsPptx = async function() {
               [_cell(r[0]),...catYTDCols_d.map((_,i)=>_numCell(_fmtRaw(r[i+1])))];
           }),
         ];
-        s.addTable(catTbl,{x:0.2,y:1.45,w:12.9,colW:cw,border:{pt:0.3,color:'DDDDDD'}});
+        s.addTable(catTbl,{x:0.28,y:1.84,w:12.9,colW:cw,border:{pt:0.3,color:'DDDDDD'}});
         const topCats=catYTDRows_d.filter(r=>!/total/i.test(r[0])).slice(0,4);
         topCats.forEach((r,i)=>{
-          const x=0.2+i*3.2;
-          kpiBox(s,x,5.8,3.0,1.5,String(r[0]),_fmtRaw(r[r.length-1]),'#'+C.green,C.lgreenBg,C.green);
+          const kx=0.28+i*3.25;
+          kpiBox(s,kx,5.75,3.05,1.5,String(r[0]),_fmtRaw(r[r.length-1]),C.green,C.lgreenBg,C.green);
         });
       }
     }
@@ -3583,9 +3620,9 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 9: June Category Performance ────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addHeaderBar(s,'JUNE CATEGORY PERFORMANCE',label);
+      addTabHeader(s,'CATEGORY',`${fullMonth.toUpperCase()} CATEGORY PERFORMANCE`,9);
       if(catLatRows_d.length&&catLatCols_d.length){
-        sectionLabel(s,'JUNE vs MAY TARGET ACHIEVEMENT',0.2,1.0,10,true);
+        sectionLabel(s,`${fullMonth.toUpperCase()} vs PREV MONTH TARGET ACHIEVEMENT`,0.28,1.42,10,true);
         const nc=catLatCols_d.length;
         const cw=[2.5,...catLatCols_d.map(()=>+(10.4/nc).toFixed(3))];
         const catLatTbl=[
@@ -3593,23 +3630,22 @@ window.downloadAsPptx = async function() {
           ...catLatRows_d.map(r=>{
             const isG=/global|total/i.test(r[0]);
             return [_cell(r[0],{bold:isG,fill:isG?{color:C.greatBg}:{}}),
-              ...catLatCols_d.map((_,i)=>{
-                const v=r[i+1]; const isA=catLatCols_d[i]?.includes('%');
+              ...catLatCols_d.map((_,j)=>{
+                const v=r[j+1]; const isA=catLatCols_d[j]?.includes('%');
                 const n=_pN(v); const col=isA&&n!=null?(n>=90?C.green:n>=80?C.weak:C.concern):C.dkgray;
                 return _cell(isA?(n!=null?`${n.toFixed(1)}%`:'—'):_fmtRaw(v),{align:'right',color:col,bold:isG,fill:isG?{color:C.greatBg}:{}});
               })];
           }),
         ];
-        s.addTable(catLatTbl,{x:0.2,y:1.45,w:12.9,colW:cw,border:{pt:0.3,color:'DDDDDD'}});
+        s.addTable(catLatTbl,{x:0.28,y:1.84,w:12.9,colW:cw,border:{pt:0.3,color:'DDDDDD'}});
       }
     }
 
     // ── SLIDE 10: YoY Comparison ───────────────────────────────────────────────
     if(yoyGrow.length||yoyDec.length){
       const s = pptx.addSlide();
-      addHeaderBar(s,'OUTLET YEAR-ON-YEAR COMPARISON (SM + 3F)',label);
-      function yoyTbl(rows,bg,startX,totalW){
-        const cw=[2.1,1.5,1.5,1.3,0.8];
+      addTabHeader(s,'COMPARISON','OUTLET YEAR-ON-YEAR COMPARISON (SM + 3F)',10);
+      function yoyTbl(rows){
         return rows.slice(0,11).map(r=>{
           const pv=_pN(r[r.length-1]); const isGrow=pv>=0;
           return [_cell(r[0]),_numCell(_fmtRaw(r[2])),_numCell(_fmtRaw(r[4])),
@@ -3618,33 +3654,34 @@ window.downloadAsPptx = async function() {
         });
       }
       if(yoyGrow.length){
-        sectionLabel(s,'TOP GROWERS',0.2,1.0,6.2);
-        const tbl=[_hdr(['OUTLET','2025 VAL','2026 VAL','DIFF','% VAL']),...yoyTbl(yoyGrow,C.greatBg,0.2,6.2)];
-        s.addTable(tbl,{x:0.2,y:1.42,w:6.2,colW:[2.1,1.3,1.3,1.0,0.5],border:{pt:0.3,color:'DDDDDD'},fontSize:8});
+        sectionLabel(s,'TOP GROWERS',0.28,1.42,6.2);
+        const tbl=[_hdr(['OUTLET','2025 VAL','2026 VAL','DIFF','% VAL']),...yoyTbl(yoyGrow)];
+        s.addTable(tbl,{x:0.28,y:1.84,w:6.2,colW:[2.1,1.3,1.3,1.0,0.5],border:{pt:0.3,color:'DDDDDD'}});
       }
       if(yoyDec.length){
-        sectionLabel(s,'DECLINERS',6.7,1.0,6.2,true);
-        const tbl=[_hdr(['OUTLET','2025 VAL','2026 VAL','DIFF','% VAL'],C.orange),...yoyTbl(yoyDec,C.concernBg,6.7,6.4)];
-        s.addTable(tbl,{x:6.7,y:1.42,w:6.4,colW:[2.3,1.3,1.3,1.0,0.5],border:{pt:0.3,color:'DDDDDD'},fontSize:8});
+        sectionLabel(s,'DECLINERS',6.85,1.42,6.2,true);
+        const tbl=[_hdr(['OUTLET','2025 VAL','2026 VAL','DIFF','% VAL'],C.orange),...yoyTbl(yoyDec)];
+        s.addTable(tbl,{x:6.85,y:1.84,w:6.2,colW:[2.3,1.3,1.3,0.8,0.5],border:{pt:0.3,color:'DDDDDD'}});
       }
     }
 
     // ── SLIDE 11: Utilities ────────────────────────────────────────────────────
     if(util_d.length){
       const s = pptx.addSlide();
-      addHeaderBar(s,'UTILITIES & POWER COST',label);
+      addTabHeader(s,'','UTILITIES & POWER COST',11);
+      // KPI boxes — Quattrocento Sans 14 label, Liter 18 value (orange)
       util_d.slice(0,4).forEach((r,i)=>{
-        const x=0.2+i*3.2;
-        s.addShape(pptx.ShapeType.rect,{x,y:1.0,w:3.0,h:1.4,fill:{color:C.lorangeBg},line:{color:C.orange,pt:1.5}});
-        s.addText(String(r[0]||''),{x:x+0.1,y:1.1,w:2.8,h:0.3,fontSize:9,color:C.gray,bold:true});
-        s.addText(String(r[r.length-1]||'—'),{x:x+0.1,y:1.45,w:2.8,h:0.65,fontSize:18,bold:true,color:C.orange,align:'center'});
+        const x=0.28+i*3.25, ky=1.48, kw=3.05, kh=1.35;
+        s.addShape(pptx.ShapeType.rect,{x,y:ky,w:kw,h:kh,fill:{color:C.lorangeBg},line:{color:C.orange,pt:1.5}});
+        s.addText(String(r[0]||''),{x:x+0.12,y:ky+0.1,w:kw-0.24,h:0.3,fontSize:9,color:C.gray,bold:false,fontFace:'Quattrocento Sans'});
+        s.addText(String(r[r.length-1]||'—'),{x:x+0.08,y:ky+0.42,w:kw-0.16,h:kh-0.58,fontSize:18,bold:true,color:C.orange,align:'center',valign:'middle',fontFace:'Liter'});
       });
-      sectionLabel(s,'UTILITY DETAILS',0.2,2.6,9,true);
+      sectionLabel(s,'UTILITY DETAILS BY MONTH',0.28,3.0,9,true);
       const utilTbl=[
-        _hdr(['Description','Jan','Feb','Mar','Apr','May','Jun'],C.orange),
+        _hdr(['DESCRIPTION','JAN','FEB','MAR','APR','MAY','JUN'],C.orange),
         ...util_d.map(r=>[_cell(r[0]),_numCell(r[1]||'—'),_numCell(r[2]||'—'),_numCell(r[3]||'—'),_numCell(r[4]||'—'),_numCell(r[5]||'—'),_numCell(r[6]||'—')]),
       ];
-      s.addTable(utilTbl,{x:0.2,y:3.05,w:12.9,colW:[4.2,1.45,1.45,1.45,1.45,1.45,1.45],border:{pt:0.3,color:'DDDDDD'}});
+      s.addTable(utilTbl,{x:0.28,y:3.42,w:12.9,colW:[4.2,1.45,1.45,1.45,1.45,1.45,1.45],border:{pt:0.3,color:'DDDDDD'}});
     }
 
     // ── SLIDE 12: Thank You ────────────────────────────────────────────────────
