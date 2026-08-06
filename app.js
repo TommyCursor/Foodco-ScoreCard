@@ -3459,10 +3459,91 @@ window.downloadAsPptx = async function() {
       });
     }
 
-    // ── SLIDE 4: Growth ────────────────────────────────────────────────────────
+    // ── SLIDE 4: Revenue Overview (Core Business) ─────────────────────────────
+    if(coreBizRows.length||otherBizRows.length){
+      const s = pptx.addSlide();
+
+      // Dynamic title: latest-month Supermarket and Restaurant values
+      const smRow  = coreBizRows.find(r=>/supermarket|sm\b/i.test(r[0]));
+      const rstRow = coreBizRows.find(r=>/restaurant|rst\b/i.test(r[0]));
+      const totRow = coreBizRows.find(r=>/total/i.test(r[0]));
+      const smV  = smRow  ? _fmtBig(smRow [smRow .length-1]) : null;
+      const rstV = rstRow ? _fmtBig(rstRow[rstRow.length-1]) : null;
+      const rovTitle = smV&&rstV ? `Core Business: Supermarket ${smV}, Restaurant ${rstV}` : 'REVENUE OVERVIEW';
+      addTabHeader(s,'REVENUE',rovTitle,4);
+
+      const lx=0.28, lw=7.0, rx=7.55, rw=5.5, tY=1.48;
+
+      // ── Core Business (left panel) ───────────────────────────────────────────
+      s.addText('CORE BUSINESS (Million)',{x:lx,y:tY,w:lw,h:0.28,fontSize:11,bold:true,color:C.orange,fontFace:'Liter'});
+      if(rovCols.length){
+        const mnCols=rovCols.slice(0,6);
+        const mcw=+((lw-1.9)/mnCols.length).toFixed(2);
+        const coreTbl=[
+          _hdr(['Business',...mnCols]),
+          ...coreBizRows.map(r=>{
+            const isT=/total/i.test(r[0]);
+            if(isT) return _totRow([r[0],...mnCols.map((_,i)=>r[i+1]||'—')]);
+            return [_cell(r[0]),...mnCols.map((_,i)=>{
+              const isLast=i===mnCols.length-1;
+              return _numCell(r[i+1]||'—',{bold:isLast});
+            })];
+          }),
+        ];
+        s.addTable(coreTbl,{x:lx,y:tY+0.32,w:lw,colW:[1.9,...mnCols.map(()=>mcw)],border:{pt:0.3,color:'DDDDDD'}});
+      }
+
+      // Insight box
+      const totJun   = totRow  ? _fmtBig(totRow[totRow.length-1]) : null;
+      const totN     = totRow  ? _pN(totRow[totRow.length-1]) : null;
+      const smPct    = smRow&&totN  ? ((_pN(smRow [smRow .length-1])||0)/totN*100).toFixed(1) : null;
+      const rstPct   = rstRow&&totN ? ((_pN(rstRow[rstRow.length-1])||0)/totN*100).toFixed(1) : null;
+      const insParts=[];
+      if(totJun)  insParts.push({text:`${fullMonth} Total Revenue: ${totJun}`,options:{bold:true,fontFace:'Quattrocento Sans'}});
+      if(smPct)   insParts.push({text:'  |  Supermarket ',options:{bold:false,fontFace:'Quattrocento Sans'}},{text:`${smPct}%`,options:{bold:true,fontFace:'Quattrocento Sans'}});
+      if(rstPct)  insParts.push({text:'  |  Restaurant ',options:{bold:false,fontFace:'Quattrocento Sans'}},{text:`${rstPct}%`,options:{bold:true,fontFace:'Quattrocento Sans'}});
+      if(insParts.length){
+        const iby=5.6,ibh=0.65;
+        s.addShape(pptx.ShapeType.rect,{x:lx,y:iby,w:lw,h:ibh,fill:{color:'1E3A2A'},line:{color:'1E3A2A',pt:0}});
+        s.addText(insParts,{x:lx+0.15,y:iby+0.06,w:lw-0.3,h:ibh-0.12,fontSize:10,color:C.white,wrap:true,valign:'middle'});
+      }
+
+      // Small donut chart below insight box
+      if(smRow&&rstRow){
+        const smN=_pN(smRow[smRow.length-1])||0, rstN=_pN(rstRow[rstRow.length-1])||0;
+        if(smN||rstN){
+          s.addChart(pptx.ChartType.doughnut,
+            [{name:'Revenue',labels:['Supermarket','Restaurant'],values:[smN,rstN]}],
+            {x:lx,y:4.7,w:2.1,h:2.0,holeSize:55,chartColors:['166534','ea580c'],showLegend:true,legendPos:'r',legendFontSize:9,showTitle:false,showValue:false});
+        }
+      }
+
+      // ── Other Businesses (right panel) ───────────────────────────────────────
+      s.addText('OTHER BUSINESSES (Million)',{x:rx,y:tY,w:rw,h:0.28,fontSize:11,bold:true,color:C.orange,fontFace:'Liter'});
+      if(otherBizRows.length){
+        const mayI=rovCols.findIndex(c=>/may/i.test(c));
+        const junI=rovCols.findIndex(c=>/jun/i.test(c));
+        const otherTbl=[
+          _hdr(['Business','MAY','JUN','Change'],C.orange),
+          ...otherBizRows.map(r=>{
+            const mayV=mayI>=0?_pN(r[mayI+1]):null;
+            const junV=junI>=0?_pN(r[junI+1]):null;
+            const chg=mayV&&junV&&mayV!==0?(junV-mayV)/mayV*100:null;
+            const cc=chg!=null?(chg>=0?C.green:C.concern):C.dkgray;
+            return [_cell(r[0]),
+              _numCell(mayI>=0?r[mayI+1]:'—'),
+              _numCell(junI>=0?r[junI+1]:'—'),
+              _numCell(chg!=null?`${chg>=0?'+':''}${chg.toFixed(1)}%`:'—',{bold:true,color:cc})];
+          }),
+        ];
+        s.addTable(otherTbl,{x:rx,y:tY+0.32,w:rw,colW:[2.3,1.05,1.05,1.1],border:{pt:0.3,color:'DDDDDD'}});
+      }
+    }
+
+    // ── SLIDE 5: Growth ────────────────────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addTabHeader(s,'GROWTH','REVENUE & GROWTH',4);
+      addTabHeader(s,'GROWTH','REVENUE & GROWTH',5);
       const kpis=[
         {lbl:`${latestRg?.[0]||''} VALUE YoY`, v:latestRg?.[3], orange:false},
         {lbl:`${latestRg?.[0]||''} VOLUME YoY`,v:latestRg?.[4], orange:false},
@@ -3505,7 +3586,7 @@ window.downloadAsPptx = async function() {
       const gAch=_normPct(globalOutlet?.[5]??globalOutlet?.[4]);
       const gCol=gAch>=90?C.green:gAch>=80?C.weak:C.concern;
       const gBg =gAch>=90?C.lgreenBg:gAch>=80?C.weakBg:C.concernBg;
-      addTabHeader(s,'OUTLETS',`OUTLET PERFORMANCE${gAch?'  ·  '+gAch.toFixed(1)+'% of Target':''}`,5);
+      addTabHeader(s,'OUTLETS',`OUTLET PERFORMANCE${gAch?'  ·  '+gAch.toFixed(1)+'% of Target':''}`,6);
       // Global achievement KPI box — Liter 36 bold, status colour
       if(globalOutlet){
         const gx=0.28, gy=1.48, gw=2.4, gh=1.35;
@@ -3538,7 +3619,7 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 6: Regional Performance ─────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addTabHeader(s,'OUTLETS','REGIONAL PERFORMANCE',6);
+      addTabHeader(s,'OUTLETS','REGIONAL PERFORMANCE',7);
       if(regions_d.length){
         const rw=Math.min(4.2,(W-0.56)/regions_d.length);
         regions_d.forEach((r,i)=>{
@@ -3570,7 +3651,7 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 7: Area Leaders ──────────────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addTabHeader(s,'OUTLETS','AREA LEADERS PERFORMANCE',7);
+      addTabHeader(s,'OUTLETS','AREA LEADERS PERFORMANCE',8);
       if(areaGrouped_d.length){
         const areaTbl=[
           _hdr(['LEADER','OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS']),
@@ -3596,7 +3677,7 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 8: Category Sales YTD ────────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addTabHeader(s,'CATEGORY','CATEGORY SALES YTD',8);
+      addTabHeader(s,'CATEGORY','CATEGORY SALES YTD',9);
       if(catYTDRows_d.length&&catYTDCols_d.length){
         sectionLabel(s,'DEPARTMENT PERFORMANCE BY MONTH',0.28,1.42,10);
         const cw=[2.5,...catYTDCols_d.map(()=>+(10.4/catYTDCols_d.length).toFixed(3))];
@@ -3620,7 +3701,7 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 9: June Category Performance ────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addTabHeader(s,'CATEGORY',`${fullMonth.toUpperCase()} CATEGORY PERFORMANCE`,9);
+      addTabHeader(s,'CATEGORY',`${fullMonth.toUpperCase()} CATEGORY PERFORMANCE`,10);
       if(catLatRows_d.length&&catLatCols_d.length){
         sectionLabel(s,`${fullMonth.toUpperCase()} vs PREV MONTH TARGET ACHIEVEMENT`,0.28,1.42,10,true);
         const nc=catLatCols_d.length;
@@ -3644,7 +3725,7 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 10: YoY Comparison ───────────────────────────────────────────────
     if(yoyGrow.length||yoyDec.length){
       const s = pptx.addSlide();
-      addTabHeader(s,'COMPARISON','OUTLET YEAR-ON-YEAR COMPARISON (SM + 3F)',10);
+      addTabHeader(s,'COMPARISON','OUTLET YEAR-ON-YEAR COMPARISON (SM + 3F)',11);
       function yoyTbl(rows){
         return rows.slice(0,11).map(r=>{
           const pv=_pN(r[r.length-1]); const isGrow=pv>=0;
@@ -3668,7 +3749,7 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 11: Utilities ────────────────────────────────────────────────────
     if(util_d.length){
       const s = pptx.addSlide();
-      addTabHeader(s,'','UTILITIES & POWER COST',11);
+      addTabHeader(s,'','UTILITIES & POWER COST',12);
       // KPI boxes — Quattrocento Sans 14 label, Liter 18 value (orange)
       util_d.slice(0,4).forEach((r,i)=>{
         const x=0.28+i*3.25, ky=1.48, kw=3.05, kh=1.35;
