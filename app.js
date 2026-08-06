@@ -3373,34 +3373,38 @@ window.downloadAsPptx = async function() {
       const q2a    = revVs.slice(3,6).length ? revVs.slice(3,6).reduce((a,b)=>a+b,0)/revVs.slice(3,6).length : null;
       const prevLb = _MFULL[revLbs[revVs.length-2]]||revLbs[revVs.length-2]||'Prev';
 
-      // Dynamic title
+      const DG='00843D'; // Dark Green RGB(0,132,61) — exact brand colour for slide 3 text
+
+      // Dynamic title — Liter 36, not bold, Dark Green
       s.addText(`YTD Revenue ${_fmtBig(ytdTot)} with ${fullMonth} at ${_fmtBig(lastV)}`,{
-        x:0.28,y:0.76,w:10.5,h:0.56,fontSize:22,bold:true,color:C.green,fontFace:'Liter',valign:'middle'});
-      s.addShape(pptx.ShapeType.rect,{x:0.28,y:1.26,w:1.1,h:0.05,fill:{color:C.orange}});
+        x:0.28,y:0.76,w:10.5,h:0.62,fontSize:36,bold:false,color:DG,fontFace:'Liter',valign:'middle'});
+      s.addShape(pptx.ShapeType.rect,{x:0.28,y:1.32,w:1.1,h:0.05,fill:{color:C.orange}});
       if(logoDataUrl) s.addImage({data:logoDataUrl,x:11.2,y:0.72,w:1.9,h:0.54});
       s.addText('03',{x:W-0.5,y:H-0.4,w:0.4,h:0.35,fontSize:12,color:C.gray,align:'right',fontFace:'Liter'});
 
-      // 4 KPI boxes
+      // 4 KPI boxes — label: Quattrocento Sans 14, value: Liter 48 Bold
       const kpis3=[
-        {lbl:`${fullMonth.toUpperCase()} REVENUE`, val:_fmtBig(lastV),                         col:C.green,  bg:C.lgreenBg,  bd:C.green},
-        {lbl:'YTD REVENUE',                        val:_fmtBig(ytdTot),                        col:C.green,  bg:C.lgreenBg,  bd:C.green},
-        {lbl:'PEAK MONTH',                         val:`${peakLb} ${_fmtBig(peakVV)}`,         col:C.orange, bg:C.lorangeBg, bd:C.orange},
+        {lbl:`${fullMonth.toUpperCase()} REVENUE`, val:_fmtBig(lastV),                        col:C.green,  bg:C.lgreenBg,  bd:C.green},
+        {lbl:'YTD REVENUE',                        val:_fmtBig(ytdTot),                       col:C.green,  bg:C.lgreenBg,  bd:C.green},
+        {lbl:'PEAK MONTH',                         val:`${peakLb} ${_fmtBig(peakVV)}`,        col:C.orange, bg:C.lorangeBg, bd:C.orange},
         {lbl:`${fullMonth.toUpperCase()} vs ${prevLb.toUpperCase()}`,
                                                    val:momR!=null?`${momR>=0?'+':''}${momR.toFixed(1)}%`:'—',
-                                                   col:momR!=null&&momR>=0?C.green:C.concern,  bg:'FEF2F2',  bd:C.concern},
+                                                   col:momR!=null&&momR>=0?C.green:C.concern, bg:'FEF2F2',  bd:C.concern},
       ];
       const kbw=(W-0.56-0.3)/4;
       kpis3.forEach((k,i)=>{
-        const kx=0.28+i*(kbw+0.1), ky=1.38;
-        s.addShape(pptx.ShapeType.rect,{x:kx,y:ky,w:kbw,h:1.22,fill:{color:k.bg},line:{color:k.bd,pt:1.2}});
-        s.addText(k.lbl,{x:kx+0.1,y:ky+0.1,w:kbw-0.2,h:0.28,fontSize:9,bold:true,color:C.gray});
-        s.addText(k.val,{x:kx+0.1,y:ky+0.4,w:kbw-0.2,h:0.72,fontSize:22,bold:true,color:k.col,align:'center',valign:'middle'});
+        const kx=0.28+i*(kbw+0.1), ky=1.48;
+        s.addShape(pptx.ShapeType.rect,{x:kx,y:ky,w:kbw,h:1.35,fill:{color:k.bg},line:{color:k.bd,pt:1.2}});
+        // Label — Quattrocento Sans 14, not bold, grey
+        s.addText(k.lbl,{x:kx+0.12,y:ky+0.1,w:kbw-0.24,h:0.34,fontSize:14,bold:false,color:C.gray,fontFace:'Quattrocento Sans'});
+        // Value — Liter 48, bold, status colour
+        s.addText(k.val,{x:kx+0.08,y:ky+0.46,w:kbw-0.16,h:0.78,fontSize:48,bold:true,color:k.col,align:'center',valign:'middle',fontFace:'Liter'});
       });
 
       // Bar chart — left 70%
       if(revVs.length){
         s.addChart(pptx.ChartType.bar,[{name:'Revenue',labels:revLbs,values:revVs.map(v=>+(v/1000).toFixed(3))}],{
-          x:0.28,y:2.72,w:8.8,h:4.5,
+          x:0.28,y:2.95,w:8.8,h:4.28,
           barDir:'col', barGapWidthPct:55,
           chartColors:['166534'],
           catAxisLabelColor:'374151', catAxisLabelFontSize:11,
@@ -3414,17 +3418,19 @@ window.downloadAsPptx = async function() {
       }
 
       // Key Insights panel — right 30%
-      const ix=9.35, iw=3.7, iy0=2.72;
-      s.addText('KEY INSIGHTS',{x:ix,y:iy0,w:iw,h:0.38,fontSize:13,bold:true,color:C.orange,fontFace:'Liter'});
+      const ix=9.35, iw=3.7, iy0=2.95;
+      // Heading — Liter 22, bold, Dark Green
+      s.addText('KEY INSIGHTS',{x:ix,y:iy0,w:iw,h:0.46,fontSize:22,bold:true,color:DG,fontFace:'Liter'});
       const ins3=[
-        peakLb&&peakVV ? [[{text:`${peakLb} 2026 `,options:{bold:true,color:C.green,fontFace:'Quattrocento Sans'}},{text:'was the peak revenue month at ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(peakVV),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
+        peakLb&&peakVV ? [[{text:`${peakLb} 2026 `,options:{bold:true,color:DG,fontFace:'Quattrocento Sans'}},{text:'was the peak revenue month at ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(peakVV),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
         momR!=null      ? [[{text:fullMonth,options:{bold:true,color:C.concern,fontFace:'Quattrocento Sans'}},{text:` ${momR<0?'declined':'grew'} ${Math.abs(momR).toFixed(1)}% from ${prevLb} to `,options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(lastV),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
         q1a&&q2a        ? [[{text:'Q2 average: ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(q2a),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:' vs Q1 average: ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(q1a),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
       ].filter(Boolean);
+      // Body — Quattrocento Sans 28, mixed bold
       ins3.forEach((runs,i)=>{
-        const iy=iy0+0.55+i*1.52;
-        s.addShape(pptx.ShapeType.rect,{x:ix,y:iy,w:0.04,h:1.2,fill:{color:C.green}});
-        s.addText(runs[0],{x:ix+0.14,y:iy,w:iw-0.18,h:1.28,fontSize:15,wrap:true,valign:'top'});
+        const iy=iy0+0.6+i*1.38;
+        s.addShape(pptx.ShapeType.rect,{x:ix,y:iy,w:0.04,h:1.1,fill:{color:DG}});
+        s.addText(runs[0],{x:ix+0.14,y:iy,w:iw-0.18,h:1.2,fontSize:28,wrap:true,valign:'top',fontFace:'Quattrocento Sans'});
       });
     }
 
