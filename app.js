@@ -3350,41 +3350,82 @@ window.downloadAsPptx = async function() {
     // ── SLIDE 3: Revenue ───────────────────────────────────────────────────────
     {
       const s = pptx.addSlide();
-      addHeaderBar(s,'REVENUE',label);
-      sectionLabel(s,'CORE BUSINESS (Million)',0.2,1.0,7);
-      if(coreBizRows.length&&rovCols.length){
-        const cw = [2.8,...rovCols.map(()=>+(9.9/rovCols.length).toFixed(2))];
-        const tblR = [
-          _hdr(['Business Unit',...rovCols]),
-          ...coreBizRows.map(r=>{
-            const isT=/total/i.test(r[0]);
-            return (isT?_totRow:r=>r.map((t,i)=>_cell(t,{align:i>0?'right':'left'})))([r[0],...rovCols.map((_,i)=>r[i+1]||'—')]);
-          }),
-        ];
-        s.addTable(tblR,{x:0.2,y:1.42,w:12.9,colW:cw,border:{pt:0.3,color:'DDDDDD'}});
+      // Tab header — REVENUE is active (bold)
+      s.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:0.62,fill:{color:C.green}});
+      ['REVENUE','GROWTH','OUTLETS','CATEGORY','COMPARISON'].forEach((t,i)=>{
+        const tw=W/5;
+        s.addText(t,{x:i*tw,y:0,w:tw,h:0.62,fontSize:16,color:C.white,align:'center',valign:'middle',fontFace:'Liter',bold:t==='REVENUE'});
+      });
+      s.addShape(pptx.ShapeType.rect,{x:0,y:0.62,w:W,h:0.06,fill:{color:C.orange}});
+
+      // Derive monthly revenue metrics
+      const revMs  = ytdMonths.filter(r=>_pN(r[1])!==null);
+      const revVs  = revMs.map(r=>_pN(r[1]));
+      const revLbs = revMs.map(r=>String(r[0]||'').toUpperCase());
+      const ytdTot = _pN(ytdRowD?.[1]) ?? revVs.reduce((a,b)=>a+b,0);
+      const lastV  = revVs[revVs.length-1];
+      const prevV  = revVs[revVs.length-2];
+      const peakI  = revVs.length ? revVs.indexOf(Math.max(...revVs)) : -1;
+      const peakLb = peakI>=0 ? (_MFULL[revLbs[peakI]]||revLbs[peakI]) : '';
+      const peakVV = peakI>=0 ? revVs[peakI] : null;
+      const momR   = (prevV&&lastV) ? (lastV-prevV)/prevV*100 : null;
+      const q1a    = revVs.slice(0,3).length ? revVs.slice(0,3).reduce((a,b)=>a+b,0)/3 : null;
+      const q2a    = revVs.slice(3,6).length ? revVs.slice(3,6).reduce((a,b)=>a+b,0)/revVs.slice(3,6).length : null;
+      const prevLb = _MFULL[revLbs[revVs.length-2]]||revLbs[revVs.length-2]||'Prev';
+
+      // Dynamic title
+      s.addText(`YTD Revenue ${_fmtBig(ytdTot)} with ${fullMonth} at ${_fmtBig(lastV)}`,{
+        x:0.28,y:0.76,w:10.5,h:0.56,fontSize:22,bold:true,color:C.green,fontFace:'Liter',valign:'middle'});
+      s.addShape(pptx.ShapeType.rect,{x:0.28,y:1.26,w:1.1,h:0.05,fill:{color:C.orange}});
+      if(logoDataUrl) s.addImage({data:logoDataUrl,x:11.2,y:0.72,w:1.9,h:0.54});
+      s.addText('03',{x:W-0.5,y:H-0.4,w:0.4,h:0.35,fontSize:12,color:C.gray,align:'right',fontFace:'Liter'});
+
+      // 4 KPI boxes
+      const kpis3=[
+        {lbl:`${fullMonth.toUpperCase()} REVENUE`, val:_fmtBig(lastV),                         col:C.green,  bg:C.lgreenBg,  bd:C.green},
+        {lbl:'YTD REVENUE',                        val:_fmtBig(ytdTot),                        col:C.green,  bg:C.lgreenBg,  bd:C.green},
+        {lbl:'PEAK MONTH',                         val:`${peakLb} ${_fmtBig(peakVV)}`,         col:C.orange, bg:C.lorangeBg, bd:C.orange},
+        {lbl:`${fullMonth.toUpperCase()} vs ${prevLb.toUpperCase()}`,
+                                                   val:momR!=null?`${momR>=0?'+':''}${momR.toFixed(1)}%`:'—',
+                                                   col:momR!=null&&momR>=0?C.green:C.concern,  bg:'FEF2F2',  bd:C.concern},
+      ];
+      const kbw=(W-0.56-0.3)/4;
+      kpis3.forEach((k,i)=>{
+        const kx=0.28+i*(kbw+0.1), ky=1.38;
+        s.addShape(pptx.ShapeType.rect,{x:kx,y:ky,w:kbw,h:1.22,fill:{color:k.bg},line:{color:k.bd,pt:1.2}});
+        s.addText(k.lbl,{x:kx+0.1,y:ky+0.1,w:kbw-0.2,h:0.28,fontSize:9,bold:true,color:C.gray});
+        s.addText(k.val,{x:kx+0.1,y:ky+0.4,w:kbw-0.2,h:0.72,fontSize:22,bold:true,color:k.col,align:'center',valign:'middle'});
+      });
+
+      // Bar chart — left 70%
+      if(revVs.length){
+        s.addChart(pptx.ChartType.bar,[{name:'Revenue',labels:revLbs,values:revVs.map(v=>+(v/1000).toFixed(3))}],{
+          x:0.28,y:2.72,w:8.8,h:4.5,
+          barDir:'col', barGapWidthPct:55,
+          chartColors:['166534'],
+          catAxisLabelColor:'374151', catAxisLabelFontSize:11,
+          valAxisLabelColor:'374151', valAxisLabelFontSize:10,
+          showValue:true, dataLabelColor:'166534', dataLabelFontSize:11,
+          showLegend:false,
+          showTitle:true, title:'Monthly Revenue 2026 (Billion Naira)',
+          titleFontSize:12, titleColor:'374151',
+          valGridLine:{color:'F3F4F6',style:'solid'}, catGridLine:{style:'none'},
+        });
       }
-      if(otherBizRows.length){
-        sectionLabel(s,'OTHER BUSINESSES (Million)',0.2,4.35,7,true);
-        const cw2=[2.5,...rovCols.slice(-2).map(()=>1.8),1.8];
-        const tblR2=[
-          _hdr(['Business',...rovCols.slice(-2),'MoM Chg'],C.orange),
-          ...otherBizRows.filter(r=>!/total/i.test(r[0])).map(r=>{
-            const prev=_pN(r[r.length-2]),curr=_pN(r[r.length-1]);
-            const chg=prev&&curr?((curr-prev)/prev*100):null;
-            return [_cell(r[0]),_numCell(r[r.length-2]),_numCell(r[r.length-1]),
-              _cell(chg!=null?`${chg>=0?'+':''}${chg.toFixed(1)}%`:'—',{align:'center',color:chg==null?C.gray:chg>=0?C.green:C.concern,bold:true})];
-          }),
-        ];
-        s.addTable(tblR2,{x:0.2,y:4.75,w:7.9,colW:cw2,border:{pt:0.3,color:'DDDDDD'}});
-      }
-      if(ytdRowD){
-        const ytdN=_pN(ytdRowD[1]);
-        kpiBox(s,8.2,4.35,2.5,1.5,'YTD REVENUE',ytdN?`N${ytdN.toFixed(2)}B`:'—',C.green,C.lgreenBg,C.green);
-      }
-      if(latestRg){
-        const voy=_pN(latestRg[3]);
-        kpiBox(s,11.0,4.35,2.1,1.5,`${latestRg[0]} VAL YoY`,voy!=null?`${voy>=0?'+':''}${voy.toFixed(1)}%`:'—',voy>=0?C.green:C.concern,C.lorangeBg,C.orange);
-      }
+
+      // Key Insights panel — right 30%
+      const ix=9.35, iw=3.7, iy0=2.72;
+      s.addText('KEY INSIGHTS',{x:ix,y:iy0,w:iw,h:0.38,fontSize:13,bold:true,color:C.orange,fontFace:'Liter'});
+      const ins3=[
+        peakLb&&peakVV ? [[{text:`${peakLb} 2026 `,options:{bold:true,color:C.green,fontFace:'Quattrocento Sans'}},{text:'was the peak revenue month at ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(peakVV),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
+        momR!=null      ? [[{text:fullMonth,options:{bold:true,color:C.concern,fontFace:'Quattrocento Sans'}},{text:` ${momR<0?'declined':'grew'} ${Math.abs(momR).toFixed(1)}% from ${prevLb} to `,options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(lastV),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
+        q1a&&q2a        ? [[{text:'Q2 average: ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(q2a),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:' vs Q1 average: ',options:{color:C.dkgray,fontFace:'Quattrocento Sans'}},{text:_fmtBig(q1a),options:{bold:true,color:C.dkgray,fontFace:'Quattrocento Sans'}}]] : null,
+      ].filter(Boolean);
+      ins3.forEach((runs,i)=>{
+        const iy=iy0+0.55+i*1.52;
+        s.addShape(pptx.ShapeType.rect,{x:ix,y:iy,w:0.04,h:1.2,fill:{color:C.green}});
+        s.addText(runs[0],{x:ix+0.14,y:iy,w:iw-0.18,h:1.28,fontSize:15,wrap:true,valign:'top'});
+      });
     }
 
     // ── SLIDE 4: Growth ────────────────────────────────────────────────────────
