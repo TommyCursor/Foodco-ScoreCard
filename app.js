@@ -4294,27 +4294,30 @@ window.presentReport = async function() {
   function fmtBil(v){ const n=pN(v); if(n===null) return '—'; return Math.abs(n)>=1?`N${Math.abs(n).toFixed(2)}B`:`N${(Math.abs(n)*1000).toFixed(0)}M`; }
 
   const rov      = data.revenueOverview||[];
-  // Word-boundary regex prevents "SUPERMARKET" matching /mar/ or "JUNE YTD" being double-counted
-  const mRe      = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
-  let rovHdr     = rov.find(r=>r?.slice(1).some(c=>mRe.test(String(c))));
-  if(!rovHdr) rovHdr = rov.find(r=>r?.some(c=>mRe.test(String(c))));
-  const rovCols  = rovHdr?rovHdr.filter(c=>c&&mRe.test(String(c))):[];
+  // Start-of-string month match: "APR","JUNE","Jun-26" all match; "SUPERMARKET" does NOT (starts with S)
+  // Exclude YTD/total columns so "JUNE YTD" isn't treated as a data month
+  const mRe      = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
+  const mColRe   = c => mRe.test(String(c)) && !/ytd|total|budget|target|\d{4}/i.test(String(c));
+  // Also used to detect/skip header-like rows in section parsers
+  const isHdrRow = r => mRe.test(String(r?.[0]||'')) || /^business$/i.test(String(r?.[0]||'').trim());
+  let rovHdr     = rov.find(r=>r?.slice(1).some(c=>mColRe(c)));
+  if(!rovHdr) rovHdr = rov.find(r=>r?.some(c=>mColRe(c)));
+  const rovCols  = rovHdr?rovHdr.filter(c=>c&&mColRe(c)):[];
   const rovIdx   = rovHdr?rovCols.map(c=>rovHdr.indexOf(c)):[];
   let coreBiz=[],otherBiz=[],inC=false,inO=false;
   for(const r of rov){
     if(!r?.[0]) continue;
     if(/core business/i.test(r[0])){inC=true;inO=false;continue;}
     if(/other.*business|other.*key/i.test(r[0])){inO=true;inC=false;continue;}
-    // Skip column header rows (rows whose first cell is "Business" or matches a month)
-    if(mRe.test(String(r[0]))||/^business$/i.test(String(r[0]).trim())) continue;
+    if(isHdrRow(r)) continue; // skip column header rows
     if(inC&&r.length>=2) coreBiz.push(r);
     if(inO&&r.length>=2) otherBiz.push(r);
   }
   const smRow    = coreBiz.find(r=>/supermarket|sm\b/i.test(r[0]));
   const rstRow   = coreBiz.find(r=>/restaurant|rst\b/i.test(r[0]));
   const totBizRow= coreBiz.find(r=>/total/i.test(r[0]));
-  const junIdx   = rovCols.findIndex(c=>/\bjun/i.test(c));
-  const mayIdx   = rovCols.findIndex(c=>/\bmay\b/i.test(c));
+  const junIdx   = rovCols.findIndex(c=>/^jun/i.test(String(c)));
+  const mayIdx   = rovCols.findIndex(c=>/^may/i.test(String(c)));
   function rovVal(row){ if(!row) return null; if(junIdx>=0&&rovIdx[junIdx]!=null) return pN(row[rovIdx[junIdx]]); const nums=row.slice(1).map(pN).filter(v=>v!==null); if(nums.length>=2&&nums[nums.length-1]>nums[nums.length-2]*3) return nums[nums.length-2]; return nums[nums.length-1]??null; }
   const smJunV   = rovVal(smRow);
   const rstJunVraw= rovVal(rstRow);
@@ -4342,7 +4345,7 @@ window.presentReport = async function() {
   for(const r of areaRaw){ if(!r?.[0]&&!r?.[1]) continue; if(/^(area leader|leader|outlet|june 2026|performance)$/i.test((r[0]||'').trim())) continue; if(!r[1]||r.length<4) continue; areaRows.push({leader:r[0]||'',outlet:r[1],target:r[2],actual:r[3],diff:r[4],pct:r[5],isTotal:/total/i.test(r[1])}); }
 
   const catYTD   = data.categorySalesYTD||[];
-  const catYHdr  = catYTD.find(r=>r?.slice(1).some(c=>mRe.test(String(c))));
+  const catYHdr  = catYTD.find(r=>r?.slice(1).some(c=>mColRe(c)));
   const catYCols = catYHdr?catYHdr.slice(1).filter(Boolean):[];
   const catYRows = catYTD.filter(r=>r?.[0]&&!/dept|category|sales/i.test(r[0])&&r.length>=2);
 
