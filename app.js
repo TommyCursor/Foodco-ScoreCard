@@ -4309,6 +4309,29 @@ const UPLOAD_SHEETS = [
   { key:'utility',            tab:'UTILITY & POWER COST', match:/utility|power\s*cost/i,  row:1, col:0 },
 ];
 
+// How much a candidate slice still resembles a data table. Used to decide
+// whether the configured offsets suit an uploaded file, or whether it should be
+// read whole and left to the parsers to locate their own header row.
+function gridScore(rows) {
+  if (!rows?.length) return -1;
+  const looksMonth = v => {
+    const s = String(v ?? '').trim();
+    if (!s) return false;
+    if (/^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}$/.test(s)) return true;   // 6/26/2026
+    if (/^\d{4}-\d{1,2}-\d{1,2}/.test(s)) return true;                   // 2026-06-26
+    return /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(s);
+  };
+  const hasMonthHeader = rows.some(r => (r || []).filter(looksMonth).length >= 2);
+  // A label column is text, not numbers — if it were sliced away, the first
+  // column would be figures and this drops to zero.
+  const labelled = rows.filter(r => {
+    const c = String(r?.[0] ?? '').trim();
+    return c && isNaN(parseFloat(c));
+  }).length;
+  const hasLabelCol = labelled >= Math.max(2, rows.length * 0.3);
+  return (hasMonthHeader ? 4 : 0) + (hasLabelCol ? 2 : 0);
+}
+
 function loadSheetJS() {
   if (window.XLSX) return Promise.resolve(window.XLSX);
   if (window._xlsxLoading) return window._xlsxLoading;
@@ -4330,7 +4353,7 @@ window.uploadReportFile = async function(file, onStatus = () => {}) {
 
   // Three distinct outcomes, because "no rows" for a missing tab and "no rows"
   // for a tab whose layout differs need completely different fixes.
-  const out = {}, matched = [], missing = [], empty = [];
+  const out = {}, matched = [], missing = [], empty = [], relaxed = [];
   for (const spec of UPLOAD_SHEETS) {
     const name = wb.SheetNames.find(n => spec.match.test(String(n).trim()));
     if (!name) { if(!missing.includes(spec.tab)) missing.push(spec.tab); out[spec.key] = []; continue; }
@@ -4347,11 +4370,29 @@ window.uploadReportFile = async function(file, onStatus = () => {}) {
     // header:1 gives raw row arrays; defval:'' keeps blank cells as placeholders
     // so a gap never collapses and shifts every column after it.
     const grid = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', blankrows:true, raw:false, ...(range?{range}:{}) });
-    const sliced = grid
-      .slice(spec.row, spec.endRow != null ? spec.endRow : undefined)
-      .map(r => (r || []).slice(spec.col));
-    // Drop trailing all-empty rows so parsers that stop at a blank row behave
-    while (sliced.length && sliced[sliced.length-1].every(c => String(c ?? '').trim() === '')) sliced.pop();
+    const trim = rows => {
+      const r = rows.map(x => [...(x || [])]);
+      while (r.length && r[r.length-1].every(c => String(c ?? '').trim() === '')) r.pop();
+      return r;
+    };
+    const cut = (rowFrom, colFrom) => trim(
+      grid.slice(rowFrom, spec.endRow != null ? spec.endRow : undefined).map(r => (r || []).slice(colFrom))
+    );
+    let sliced = cut(spec.row, spec.col);
+    // The offsets replicate the Google Sheet's ranges. A file laid out
+    // differently still slices to something non-empty — just the WRONG cells,
+    // with the header row and label column cut away — so emptiness cannot be
+    // the trigger. Score both candidates on whether they still look like a
+    // table (a month header row, a column of text labels) and keep the better.
+    // Skipped where an endRow is set, since a neighbouring section sits just
+    // below and a wider read would swallow it.
+    if (spec.endRow == null && (spec.row || spec.col)) {
+      const whole = cut(0, 0);
+      if (gridScore(whole) > gridScore(sliced)) {
+        sliced = whole;
+        relaxed.push({ tab: spec.tab, sheet: name });
+      }
+    }
     out[spec.key] = sliced;
     matched.push({ key: spec.key, tab: spec.tab, sheet: name, rows: sliced.length });
     // Tab exists but the slice produced nothing — the layout differs from the
@@ -4362,7 +4403,7 @@ window.uploadReportFile = async function(file, onStatus = () => {}) {
     throw new Error(`No recognised sheets. Expected tabs like "REVENUE OVERVIEW" or "OUTLETS PERFORMANCE"; this file has: ${wb.SheetNames.slice(0,10).join(', ')}`);
   }
   onStatus(`Read ${matched.length - empty.length} of ${UPLOAD_SHEETS.length} sheets`);
-  const report = { data: out, matched, missing, empty, sheetNames: wb.SheetNames, fileName: file.name };
+  const report = { data: out, matched, missing, empty, relaxed, sheetNames: wb.SheetNames, fileName: file.name };
   window._uploadReport = report;   // inspect in console for the full picture
   return report;
 };
@@ -4809,6 +4850,9 @@ window.presentReport = async function() {
       if (rep.empty.length)
         add('FILE · tabs found but empty', false,
           `${rep.empty.map(e=>`${e.sheet} (${e.rawRows} rows read, none usable)`).join('; ')} — the layout likely differs from the Google Sheet`);
+      if (rep.relaxed?.length)
+        add('FILE · read from A1 instead', true,
+          `${rep.relaxed.map(r=>r.sheet).join(', ')} — your layout differs from the Google Sheet, so these were read whole and the parsers found their own headers`);
       if (!rep.missing.length && !rep.empty.length)
         add('FILE', true, `${rep.fileName} — all ${rep.matched.length} sheets read`);
     }
