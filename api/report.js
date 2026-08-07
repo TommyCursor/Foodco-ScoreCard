@@ -83,20 +83,29 @@ export default async function handler(req) {
   try {
     const accessToken = await getGoogleToken(saEmail, privateKey);
 
+    // Ranges are open-ended (no end row) and run to column Z so that adding a
+    // month or a row never silently truncates. The START cell of each range is
+    // deliberately unchanged — the parsers in app.js treat it as the origin, so
+    // shifting it would move every column index.
+    //
+    // The two ranges that still carry an end row do so because a second section
+    // lives further down the SAME sheet; they are bounded by their neighbour,
+    // not by an arbitrary guess. validateSheets() in app.js warns if either
+    // approaches its limit.
     const ranges = [
-      'BUSINESS YTD!B3:C10',
-      'REVENUE OVERVIEW!B3:H19',
-      'REVENUE & GROWTH!B2:H11',
-      'OUTLETS PERFORMANCE!A2:F35',
-      'AREA & REGION!A2:F8',
-      'AREA & REGION!A10:F65',
-      'TOP REVENUE STORES!A1:Z30',
-      'CATEGORY SALES!B1:I14',
-      'CATEGORY SALES!A17:F32',
-      'WEEKLY SALES!B3:H19',
-      'CATEGORY PERFORMANCE!B1:H100',
-      'YOY!A1:I60',
-      'UTILITY & POWER COST!A2:J14',
+      'BUSINESS YTD!B3:C',
+      'REVENUE OVERVIEW!B3:Z',
+      'REVENUE & GROWTH!B2:Z',
+      'OUTLETS PERFORMANCE!A2:Z',
+      'AREA & REGION!A2:Z8',        // bounded: area section starts at row 10
+      'AREA & REGION!A10:Z',
+      'TOP REVENUE STORES!A1:Z',
+      'CATEGORY SALES!B1:Z15',      // bounded: latest section starts at row 17
+      'CATEGORY SALES!A17:Z',
+      'WEEKLY SALES!B3:Z',
+      'CATEGORY PERFORMANCE!B1:Z',
+      'YOY!A1:Z',
+      'UTILITY & POWER COST!A2:Z',
     ];
 
     const params    = ranges.map(r => `ranges=${encodeURIComponent(r)}`).join('&');

@@ -4189,15 +4189,32 @@ const PS_THEMES = [
     accent:'#b45309', accentDark:'#92400e', accentBg:'#fef3c7' },
 ];
 
-function showThemePicker(onSelect) {
+function showThemePicker(onSelect, health) {
+  // Sheet problems are shown here, before the deck opens — the whole point is
+  // that a parse failure is visible now rather than discovered mid-presentation.
+  const issues = (health||[]).filter(h=>!h.ok);
+  const healthHTML = !health?.length ? '' : issues.length ? `
+    <div style="max-width:1000px;margin:0 auto 26px;background:#1a1410;border:1px solid #7c2d12;border-left:4px solid #ea580c;border-radius:7px;padding:14px 18px;text-align:left">
+      <div style="color:#fb923c;font-size:0.74em;font-weight:900;letter-spacing:2px;margin-bottom:9px">
+        ${issues.length} SHEET ${issues.length===1?'ISSUE':'ISSUES'} — THESE SLIDES WILL BE INCOMPLETE
+      </div>
+      ${issues.map(i=>`<div style="display:flex;gap:12px;font-size:0.82em;line-height:1.65;color:#d6d3d1">
+        <span style="color:#fb923c;font-weight:700;min-width:210px;flex-shrink:0">${i.sheet}</span>
+        <span>${i.detail}</span>
+      </div>`).join('')}
+    </div>` : `
+    <div style="max-width:1000px;margin:0 auto 26px;text-align:center;color:#4d7c5f;font-size:0.78em;letter-spacing:1.5px">
+      ✓ ALL ${health.length} SHEET CHECKS PASSED
+    </div>`;
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(6,6,8,0.97);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Segoe UI,Arial,sans-serif;';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(6,6,8,0.97);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Segoe UI,Arial,sans-serif;overflow-y:auto;padding:30px 0;';
   overlay.innerHTML = `
-    <div style="text-align:center;margin-bottom:44px">
+    <div style="text-align:center;margin-bottom:26px">
       <div style="color:rgba(255,255,255,0.45);font-size:0.85em;letter-spacing:5px;text-transform:uppercase;margin-bottom:10px">FoodCo Nigeria Sales Report</div>
       <div style="color:#fff;font-size:2.4em;font-weight:800;letter-spacing:2px;line-height:1">CHOOSE A PRESENTATION THEME</div>
       <div style="width:56px;height:3px;background:#ea580c;margin:16px auto 0;border-radius:2px"></div>
     </div>
+    ${healthHTML}
     <div style="display:flex;gap:18px;justify-content:center">
       ${PS_THEMES.map(T=>`
         <button onclick="window._themePickerSelect('${T.id}')"
@@ -4485,6 +4502,27 @@ window.presentReport = async function() {
     .map(r=>r.slice(catLLC));          // re-base so downstream can treat col 0 as the label
   const catLGlobal = catLat.find(r=>/global/i.test(String(r?.[catLLC]||'')))?.slice(catLLC);
 
+  // TOP REVENUE STORES: a month label sits above each 3-column group
+  // (Outlet, Revenue, ADS). There are no rank numbers in the sheet — rank IS the
+  // row's position, so rows are the block between the sub-header and the total.
+  const topStores=data.topStores||[];
+  const tsHdrI=topStores.findIndex(r=>(r||[]).filter(monthOf).length>=2);
+  const tsMH=tsHdrI>=0?topStores[tsHdrI]:[];
+  const tsSubI=topStores.findIndex((r,i)=>i>tsHdrI&&/outlet/i.test(String(r?.[0]||'')));
+  const tsMths=monthCols(tsMH).map(m=>({l:m.label,ni:m.idx,vi:m.idx+1}));
+  const tsRanks=(()=>{
+    if(tsSubI<0) return [];
+    const out=[];
+    for(let i=tsSubI+1;i<topStores.length;i++){
+      const r=topStores[i];
+      if(!r||!String(r[0]||'').trim()) break;      // blank row ends the block
+      if(/top\s*\d|total/i.test(String(r[0]))) break;
+      out.push(r);
+      if(out.length>=5) break;
+    }
+    return out;
+  })();
+
   // CATEGORY PERFORMANCE repeats a block per month. Take the last block, since
   // that sheet can lag the reporting month (it may still be on the prior month).
   const cperfRaw = data.categoryPerf||[];
@@ -4603,11 +4641,74 @@ window.presentReport = async function() {
     ? `<img src="${window._presLogoUrl}" class="ps-logo" alt="FoodCo"/>`
     : `<span class="ps-logo-text">FoodCo</span>`;
 
+  // ── Sheet health checks ───────────────────────────────────────────────────
+  // Every parse failure used to surface as a silent "—" discovered mid-meeting.
+  // These run before the deck is built and report on the theme picker instead.
+  const health = (()=>{
+    const out=[];
+    const add=(sheet,ok,detail)=>out.push({sheet,ok,detail});
+    const near=(a,b,tol=0.02)=>a!=null&&b!=null&&b!==0&&Math.abs(a-b)/Math.abs(b)<=tol;
+
+    add('BUSINESS YTD', revVs.length>0 && ytdRow!=null,
+      !revVs.length?'no monthly revenue rows found':!ytdRow?'YTD row missing — range may be full':`${revVs.length} months + YTD`);
+
+    add('REVENUE OVERVIEW', rovCols.length>0 && coreBiz.length>0,
+      !rovCols.length?'month columns not detected':!coreBiz.length?'Core Business section not found':`${rovCols.length} months, ${coreBiz.length+otherBiz.length} rows`);
+
+    // Reconciliation. Note the corrected Restaurant figure is DERIVED as
+    // Total − Supermarket, so checking SM + RST against Total would be circular
+    // and could never fail. Cross-check the Total against BUSINESS YTD instead,
+    // which is an independent sheet, and only reconcile the channels when the
+    // raw Restaurant figure was used as-is.
+    if(totJunV!=null&&lastV!=null){
+      const ytdM=lastV*1000;                    // BUSINESS YTD is in billions
+      add('REVENUE OVERVIEW · vs BUSINESS YTD', near(totJunV,ytdM,0.02),
+        near(totJunV,ytdM,0.02)?`Total ${Math.round(totJunV)}M agrees with BUSINESS YTD`
+          :`Total says ${Math.round(totJunV)}M but BUSINESS YTD says ${Math.round(ytdM)}M for ${fullMonth}`);
+    }
+    if(rstJunVraw!=null&&rstJunV!=null&&rstJunVraw!==rstJunV)
+      add('REVENUE OVERVIEW · Restaurant', false,
+        `sheet says ${Math.round(rstJunVraw)}M, which exceeds Supermarket ${Math.round(smJunV)}M — treated as a 10× entry error and corrected to ${Math.round(rstJunV)}M`);
+    else if(smJunV!=null&&rstJunV!=null&&totJunV!=null)
+      add('REVENUE OVERVIEW · totals', near(smJunV+rstJunV,totJunV),
+        near(smJunV+rstJunV,totJunV)?'Supermarket + Restaurant reconciles to Total'
+          :`SM ${Math.round(smJunV)} + RST ${Math.round(rstJunV)} = ${Math.round(smJunV+rstJunV)}, but Total says ${Math.round(totJunV)}`);
+
+    add('REVENUE & GROWTH', rgRows.length>0, rgRows.length?`${rgRows.length} periods`:'no growth rows found');
+    add('OUTLETS PERFORMANCE', outRows.length>0&&globalOut!=null,
+      !outRows.length?'no outlet rows found':!globalOut?'GLOBAL row missing':`${outRows.length} outlets`);
+
+    // Regions should sum to the global figure
+    if(regions.length&&globalOut){
+      const rSum=regions.filter(r=>!/global/i.test(String(r[0]))).reduce((a,r)=>a+(pN(r[2])||0),0);
+      const g=pN(globalOut[2]);
+      add('AREA & REGION · totals', near(rSum,g,0.03),
+        near(rSum,g,0.03)?'regions reconcile to Global':`regions sum to ${fmtRaw(rSum)} but Global is ${fmtRaw(g)}`);
+    }
+    add('AREA & REGION', areaRows.length>0, areaRows.length?`${areaRows.length} area rows`:'no area rows found');
+    add('TOP REVENUE STORES', tsRanks.length>0, tsRanks.length?`${tsRanks.length} ranked stores, ${tsMths.length} months`:'ranked rows not detected');
+    add('CATEGORY SALES · YTD', catYRows.length>0, catYRows.length?`${catYRows.length} departments`:'no rows found');
+    add('CATEGORY SALES · month', catLRows.length>0, catLRows.length?`${catLRows.length} departments`:'no rows found — check for a leading blank column');
+    add('WEEKLY SALES', wkSales.some(v=>v!=null), wkSales.some(v=>v!=null)?`${wkLabels.length} weeks`:'sales row not found');
+    add('WEEKLY SALES · stock', wsDiamond.length>0&&wsSilver.length>0,
+      (wsDiamond.length&&wsSilver.length)?`Diamond ${wsDiamond.length}, Silver ${wsSilver.length}`:'stock sections not detected');
+    add('CATEGORY PERFORMANCE', cpRows.length>0, cpRows.length?`${cpRows.length} categories (${cpMonth||'month unknown'})`:'no rows found');
+    add('YOY', yoyRows.length>0, yoyRows.length?`${yoyRows.length} outlets in ${yoyPick?.name||'first section'}`:'no outlet rows found');
+    add('UTILITY & POWER COST', utilD.length>0, utilD.length?`${utilD.length} line items`:'no rows found');
+
+    // Warn when a bounded range is nearly full, before it silently truncates
+    const cap=(sheet,rows,limit)=>{ if(rows>=limit-1) out.push({sheet,ok:false,detail:`${rows} of ${limit} rows used — adding another will be truncated`}); };
+    cap('AREA & REGION · region block',(data.regionPerf||[]).length,7);
+    cap('CATEGORY SALES · YTD block',(data.categorySalesYTD||[]).length,15);
+    return out;
+  })();
+  window._presHealth = health;
+
   // ── Kick off AI analysis, then let the user pick a theme while it runs ─────
   const aiRequest = startAIAnalysis();
 
   // ── Theme selection ────────────────────────────────────────────────────────
-  const T = await new Promise(resolve => showThemePicker(resolve));
+  const T = await new Promise(resolve => showThemePicker(resolve, health));
 
   // ── Theme color replacer (for pre-built slide HTML) ────────────────────────
   // Protects status-cell text colours by requiring absence of ;background:#DCFCE7
@@ -5065,27 +5166,7 @@ Rules: use the real numbers from the data. Name real outlets and categories. No 
   </div>`);
   });
 
-  // Slide 9: Top 5 Stores (static fallback — TopStores sheet structure varies)
-  // Layout: a month label sits above each 3-column group (Outlet, Revenue, ADS).
-  // There are no rank numbers in the sheet — rank IS the row's position, so the
-  // rows are taken as the block between the sub-header and the "Top 5" total.
-  const topStores=data.topStores||[];
-  const tsHdrI=topStores.findIndex(r=>(r||[]).filter(monthOf).length>=2);
-  const tsMH=tsHdrI>=0?topStores[tsHdrI]:[];
-  const tsSubI=topStores.findIndex((r,i)=>i>tsHdrI&&/outlet/i.test(String(r?.[0]||'')));
-  const tsMths=monthCols(tsMH).map(m=>({l:m.label,ni:m.idx,vi:m.idx+1}));
-  const tsRanks=(()=>{
-    if(tsSubI<0) return [];
-    const out=[];
-    for(let i=tsSubI+1;i<topStores.length;i++){
-      const r=topStores[i];
-      if(!r||!String(r[0]||'').trim()) break;      // blank row ends the block
-      if(/top\s*\d|total/i.test(String(r[0]))) break;
-      out.push(r);
-      if(out.length>=5) break;
-    }
-    return out;
-  })();
+  // Slide 9: Top 5 Stores
   SLIDES.push(`<div class="ps-slide">
     ${slideHeader('OUTLETS',`TOP 5 STORES — ${fullMonth.toUpperCase()} PERFORMANCE`,9,ins.outlets)}
     <div class="ps-body">
