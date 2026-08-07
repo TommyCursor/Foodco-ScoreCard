@@ -4530,13 +4530,93 @@ window.presentReport = async function() {
       .replace(/6px solid #ea580c/g,   `6px solid ${T.accent}`);
   }
 
+  // ── AI Insights ───────────────────────────────────────────────────────────
+  // Build a clean summary for Groq — only the numbers the AI needs, not raw sheet noise
+  const aiSummary = {
+    month: fullMonth, year: 2026,
+    revenue: {
+      june_bn: lastV?.toFixed(2), ytd_bn: ytdTot?.toFixed(2),
+      mom_change_pct: momR?.toFixed(1),
+      peak_month: peakLb, peak_bn: peakV?.toFixed(2),
+      q1_avg_bn: q1a?.toFixed(2), q2_avg_bn: q2a?.toFixed(2),
+    },
+    core_business: {
+      supermarket: { june_mn: smJunV, may_mn: smMayV, share_pct: smPct?.toFixed(1) },
+      restaurant:  { june_mn: rstJunV, may_mn: rstMayV, share_pct: rstPct?.toFixed(1) },
+      total_june_mn: totJunV,
+    },
+    outlets: {
+      global_achievement_pct: gAch?.toFixed(1),
+      total: outRows.length,
+      great:       outRows.filter(r=>normPct(r[5])>=100).length,
+      stable:      outRows.filter(r=>normPct(r[5])>=90&&normPct(r[5])<100).length,
+      weak:        outRows.filter(r=>normPct(r[5])>=80&&normPct(r[5])<90).length,
+      concerning:  outRows.filter(r=>normPct(r[5])<80).length,
+      bottom3: outRows.sort((a,b)=>normPct(a[5])-normPct(b[5])).slice(0,3).map(r=>({name:r[0],pct:normPct(r[5])?.toFixed(1)})),
+    },
+    regions: regions.map(r=>({name:r[0],achievement_pct:normPct(r[5])?.toFixed(1)})),
+    yoy: {
+      top_growers:   yoyGrow.slice(0,3).map(r=>({name:r[0],pct:yoyPct(r)?.toFixed(1)})),
+      top_decliners: yoyDec.slice(0,3).map(r=>({name:r[0],pct:yoyPct(r)?.toFixed(1)})),
+    },
+    weekly: { weeks: wkLabels, sales_mn: wkSales.map(v=>v?.toFixed(0)), is_full: wkIsFull },
+    utility: { rows: utilD.slice(0,6).map(r=>({label:r[0],value:r[1]})) },
+  };
+
+  const AI_SYSTEM = `You are a senior business intelligence analyst for FoodCo Nigeria, a food retail company with Supermarket (SM) and Restaurant (RST) channels across Nigeria. Analyze the monthly sales data and generate concise, boardroom-ready insights for a CEO presentation.
+
+For each section return:
+- headline: Journalistic headline stating the KEY FINDING (not topic). Max 12 words. Lead with the number or subject.
+- sentiment: "positive" | "warning" | "critical" | "neutral"
+- narrative: 1-2 punchy sentences a CFO would say. Be specific, reference actual numbers.
+- alert: Short label if warning/critical (e.g. "3 outlets below 80%"), else null.
+
+Benchmarks: Achievement >=100% GREAT, >=90% STABLE, >=80% WEAK, <80% CONCERNING. YoY >10% strong, >0% growing, <0% declining.
+
+Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy, weekly, utility, action_plan`;
+
+  let ins = {};
+  try {
+    const aiRes = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [
+        { role: 'system', content: AI_SYSTEM },
+        { role: 'user', content: JSON.stringify(aiSummary) },
+      ]}),
+    });
+    if (aiRes.ok) {
+      const aiData = await aiRes.json();
+      const txt = aiData.choices?.[0]?.message?.content || '';
+      const jsonMatch = txt.match(/\{[\s\S]*\}/);
+      if (jsonMatch) ins = JSON.parse(jsonMatch[0]);
+    }
+  } catch(e) { console.warn('AI insights unavailable, using static titles', e); }
+
   // ── Slide builder helpers ──────────────────────────────────────────────────
   const TABS=['REVENUE','GROWTH','OUTLETS','CATEGORY','COMPARISON'];
   function tabBar(active){
     return `<div class="ps-tabbar">${TABS.map(t=>`<div class="ps-tab${t===active?' ps-tab-on':''}">${t}</div>`).join('')}</div><div class="ps-orange-stripe"></div>`;
   }
-  function slideHeader(active,title,pg){
-    return `${tabBar(active)}<div class="ps-titlerow"><div><div class="ps-title">${esc(title)}</div><div class="ps-title-accent"></div></div>${LOGO_HTML}<span class="ps-pgnum">${String(pg).padStart(2,'0')}</span></div>`;
+  // Renders the AI insight strip between the nav bar and title row
+  function insightBar(ins){
+    if(!ins?.narrative) return '';
+    const palettes={
+      positive:{bg:'#F0FDF4',border:'#16a34a',text:'#15803d',badge:'#16a34a'},
+      warning: {bg:'#FFFBEB',border:'#D97706',text:'#92400e',badge:'#D97706'},
+      critical:{bg:'#FFF1F2',border:'#E11D48',text:'#9f1239',badge:'#E11D48'},
+      neutral: {bg:'#F8FAFC',border:'#64748b',text:'#475569',badge:'#64748b'},
+    };
+    const p=palettes[ins.sentiment]||palettes.neutral;
+    return `<div class="ps-ai-bar" style="background:${p.bg};border-left:5px solid ${p.border}">
+      <span class="ps-ai-label" style="background:${p.badge};color:#fff">AI INSIGHT</span>
+      <span class="ps-ai-text" style="color:${p.text}">${esc(ins.narrative)}</span>
+      ${ins.alert?`<span class="ps-ai-alert" style="background:${p.badge}">${esc(ins.alert)}</span>`:''}
+    </div>`;
+  }
+  function slideHeader(active,title,pg,insight=null){
+    const aiTitle = insight?.headline || title;
+    return `${tabBar(active)}${insightBar(insight)}<div class="ps-titlerow"><div><div class="ps-title">${esc(aiTitle)}</div><div class="ps-title-accent"></div></div>${LOGO_HTML}<span class="ps-pgnum">${String(pg).padStart(2,'0')}</span></div>`;
   }
   function kpiCard(label,val,col,bg,border){
     const c=col||T.brand, b=bg||T.brandBg, brd=border||T.brand;
@@ -4633,7 +4713,7 @@ window.presentReport = async function() {
 
   // Slide 3: Revenue KPIs
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('REVENUE',`YTD Revenue ${fmtBil(ytdTot)} with ${fullMonth} at ${fmtBil(lastV)}`,3)}
+    ${slideHeader('REVENUE',`YTD Revenue ${fmtBil(ytdTot)} with ${fullMonth} at ${fmtBil(lastV)}`,3,ins.revenue)}
     <div class="ps-body">
       <div class="ps-kpi-row" style="margin-bottom:12px">
         ${kpiCard(`${fullMonth.toUpperCase()} REVENUE`,fmtBil(lastV),'#166534','#F0FDF4','#166534')}
@@ -4655,7 +4735,7 @@ window.presentReport = async function() {
 
   // Slide 4: Core vs Other Business
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('REVENUE',`Core Business: Supermarket ${fmtBig(smJunV)}, Restaurant ${fmtBig(rstJunV)}`,4)}
+    ${slideHeader('REVENUE',`Core Business: Supermarket ${fmtBig(smJunV)}, Restaurant ${fmtBig(rstJunV)}`,4,ins.core_business)}
     <div class="ps-body" style="gap:10px">
       <div class="ps-split" style="flex:1;gap:20px;min-height:0">
         <div style="flex:1.3;display:flex;flex-direction:column;gap:6px;overflow:hidden">
@@ -4697,7 +4777,7 @@ window.presentReport = async function() {
     {lbl:'SAME STORE YTD',                 v:ssRg?.[3]},
   ].filter(k=>k.v!=null);
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('GROWTH','REVENUE & GROWTH',5)}
+    ${slideHeader('GROWTH','REVENUE & GROWTH',5,ins.revenue)}
     <div class="ps-body">
       <div class="ps-kpi-row">${growKpis.map(k=>{ const n=pN(k.v); const col=n!=null&&n>=0?'#166534':'#DC2626'; const bg=n!=null&&n>=0?'#F0FDF4':'#FEE2E2'; return kpiCard(k.lbl,yoyFmt(k.v),col,bg,col); }).join('')}</div>
       ${sLabel('MONTHLY GROWTH PERFORMANCE')}
@@ -4717,7 +4797,7 @@ window.presentReport = async function() {
 
   // Slide 6: Outlet Performance
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('OUTLETS',`OUTLET PERFORMANCE · ${gAch!=null?gAch.toFixed(1)+'% of Target':'Overview'}`,6)}
+    ${slideHeader('OUTLETS',`OUTLET PERFORMANCE · ${gAch!=null?gAch.toFixed(1)+'% of Target':'Overview'}`,6,ins.outlets)}
     <div class="ps-body ps-split" style="gap:16px;align-items:flex-start">
       <div class="ps-global-kpi" style="background:${sColor(globalOut?.[5]).bg};border:2px solid ${sColor(globalOut?.[5]).c}">
         <div class="ps-gkpi-label">GLOBAL ACHIEVEMENT</div>
@@ -4736,7 +4816,7 @@ window.presentReport = async function() {
 
   // Slide 7: Regional Performance
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('OUTLETS','REGIONAL PERFORMANCE',7)}
+    ${slideHeader('OUTLETS','REGIONAL PERFORMANCE',7,ins.regions)}
     <div class="ps-body">
       <div class="ps-region-cards">${regions.map(r=>{ const s=sColor(r[5]??r[4]); const pv=normPct(r[5]??r[4]); return `<div class="ps-region-card" style="border-left:6px solid ${s.c};background:${s.bg}"><div class="ps-reg-name" style="color:${s.c}">${esc(r[0])}</div><div class="ps-reg-pct" style="color:${s.c}">${pv!=null?Math.round(pv)+'%':'—'}</div><div class="ps-reg-detail">Target: ${fmtRaw(r[3])}<br/>Actual: ${fmtRaw(r[2])}</div></div>`; }).join('')}</div>
       ${sLabel('REGIONAL SALES SUMMARY')}
@@ -4772,7 +4852,7 @@ window.presentReport = async function() {
   const tsRanks=topStores.filter(r=>r?.[0]&&/^#?\d+$/i.test(String(r[0]).trim())).slice(0,5);
   const tsMths=[{l:'JAN'},{l:'FEB'},{l:'MAR'},{l:'APR'},{l:'MAY'},{l:'JUN'}].map(m=>{const i=tsMH.findIndex(c=>new RegExp(m.l,'i').test(String(c)));return{...m,ni:i,vi:i+1};}).filter(m=>m.ni>=0);
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('OUTLETS',`TOP 5 STORES — ${fullMonth.toUpperCase()} PERFORMANCE`,9)}
+    ${slideHeader('OUTLETS',`TOP 5 STORES — ${fullMonth.toUpperCase()} PERFORMANCE`,9,ins.outlets)}
     <div class="ps-body">
       ${tsRanks.length?table(
         ['RANK',...tsMths.map(m=>m.l)],
@@ -4784,7 +4864,7 @@ window.presentReport = async function() {
 
   // Slide 10: Category YTD
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('CATEGORY','CATEGORY SALES YTD',10)}
+    ${slideHeader('CATEGORY','CATEGORY SALES YTD',10,ins.weekly)}
     <div class="ps-body">
       ${sLabel('DEPARTMENT PERFORMANCE BY MONTH')}
       ${table(['DEPARTMENT',...catYCols],
@@ -4798,7 +4878,7 @@ window.presentReport = async function() {
 
   // Slide 11: June Category Performance
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('CATEGORY',`${fullMonth.toUpperCase()} CATEGORY PERFORMANCE`,11)}
+    ${slideHeader('CATEGORY',`${fullMonth.toUpperCase()} CATEGORY PERFORMANCE`,11,ins.weekly)}
     <div class="ps-body">
       ${sLabel(`${fullMonth.toUpperCase()} vs PREV MONTH TARGET ACHIEVEMENT`,true)}
       ${catLRows.length?table(
@@ -4874,7 +4954,7 @@ window.presentReport = async function() {
   const smYTD=smVals.reduce((a,b)=>a+b,0); const rstYTD=rstVals.reduce((a,b)=>a+b,0);
   const totYTD=smYTD+rstYTD;
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('COMPARISON','DEPARTMENTAL GROWTH COMPARISON',14)}
+    ${slideHeader('COMPARISON','DEPARTMENTAL GROWTH COMPARISON',14,ins.yoy)}
     <div class="ps-body ps-split" style="gap:20px;align-items:flex-start">
       ${[{label:'SUPERMARKET',vals:smVals,col:'#166534',bg:'#F0FDF4',bd:'#166534'},{label:'RESTAURANT',vals:rstVals,col:'#ea580c',bg:'#FFF7ED',bd:'#ea580c'}].map(p=>{
         const latV=p.vals[p.vals.length-1]; const prevV2=p.vals[p.vals.length-2];
@@ -4894,7 +4974,7 @@ window.presentReport = async function() {
 
   // Slide 15: YoY Comparison
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('COMPARISON','OUTLET YEAR-ON-YEAR PERFORMANCE',15)}
+    ${slideHeader('COMPARISON','OUTLET YEAR-ON-YEAR PERFORMANCE',15,ins.yoy)}
     <div class="ps-body ps-split" style="gap:16px;align-items:flex-start">
       <div style="flex:1">
         ${sLabel('TOP GROWERS')}
@@ -4913,7 +4993,7 @@ window.presentReport = async function() {
 
   // Slide 16: Utilities
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('','UTILITIES & POWER COST',16)}
+    ${slideHeader('','UTILITIES & POWER COST',16,ins.utility)}
     <div class="ps-body">
       <div class="ps-kpi-row">${utilD.slice(0,4).map(r=>{ const lbl=String(r[0]||''); const n=pN(r[r.length-1]); const isN=/value|cost/i.test(lbl); const val=n!=null?(isN||n>=1e6?fmtRaw(n):Number(Math.round(n)).toLocaleString()):'—'; return kpiCard(lbl,val,'#ea580c','#FFF7ED','#ea580c'); }).join('')}</div>
       ${sLabel('UTILITY DETAILS BY MONTH',true)}
@@ -5089,6 +5169,11 @@ window.presentReport = async function() {
       /* ── Insight banner ── */
       .ps-insight-banner{background:#F0FDF4;border:1px solid #166534;border-radius:4px;padding:7px 14px;font-size:0.9em;color:#374151;flex-shrink:0;}
       .ps-no-data{color:#9CA3AF;font-style:italic;font-size:0.92em;padding:14px 0;}
+      /* ── AI Insight bar ── */
+      .ps-ai-bar{display:flex;align-items:center;gap:12px;padding:5px 22px;flex-shrink:0;border-bottom:1px solid rgba(0,0,0,0.05);}
+      .ps-ai-label{font-size:0.6em;font-weight:900;letter-spacing:2.5px;padding:2px 7px;border-radius:3px;flex-shrink:0;}
+      .ps-ai-text{font-size:0.82em;line-height:1.4;flex:1;font-style:italic;}
+      .ps-ai-alert{font-size:0.72em;font-weight:800;color:#fff;padding:2px 9px;border-radius:10px;white-space:nowrap;flex-shrink:0;letter-spacing:.3px;}
     `;
     document.head.appendChild(style);
   }
