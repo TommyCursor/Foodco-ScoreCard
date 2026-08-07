@@ -4169,6 +4169,94 @@ window.downloadAsPptx = async function() {
 };
 
 // ── Browser Presentation Mode ─────────────────────────────────────────────────
+// ── Action Plan in-presentation editor ────────────────────────────────────────
+window._apEdit = function(planKey, monthLabel) {
+  // Load current plan data
+  let plan;
+  try { plan = JSON.parse(localStorage.getItem(planKey)); } catch(e) {}
+  if (!Array.isArray(plan) || !plan.length) {
+    // fall back to default by reading the current slide's table rows
+    plan = Array.from(document.querySelectorAll('#ps-frame tbody tr')).map(tr => {
+      const tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
+      return tds.length >= 6 ? tds : null;
+    }).filter(Boolean);
+    if (!plan.length) plan = [['1','','','','HIGH','']];
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'ps-ap-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;font-family:Segoe UI,Arial,sans-serif';
+
+  function renderEditor() {
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:8px;width:90%;max-width:1080px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+        <div style="background:#166534;color:#fff;padding:14px 20px;font-size:1.1em;font-weight:700;display:flex;justify-content:space-between;align-items:center">
+          <span>Edit Action Items — ${monthLabel}</span>
+          <button onclick="document.getElementById('ps-ap-modal').remove()" style="background:none;border:none;color:#fff;font-size:1.4em;cursor:pointer;line-height:1">×</button>
+        </div>
+        <div style="overflow-y:auto;flex:1;padding:16px">
+          <table style="width:100%;border-collapse:collapse;font-size:0.9em" id="ps-ap-tbl">
+            <thead><tr style="background:#F3F4F6">
+              <th style="padding:6px 8px;text-align:center;width:36px">#</th>
+              <th style="padding:6px 8px;text-align:left">Action Item</th>
+              <th style="padding:6px 8px;text-align:left;width:120px">Owner</th>
+              <th style="padding:6px 8px;text-align:left;width:90px">Timeline</th>
+              <th style="padding:6px 8px;text-align:left;width:90px">Priority</th>
+              <th style="padding:6px 8px;text-align:left">Likely Impact</th>
+              <th style="padding:6px 8px;width:40px"></th>
+            </tr></thead>
+            <tbody id="ps-ap-rows">
+              ${plan.map((r,i) => `<tr data-i="${i}" style="border-bottom:1px solid #E5E7EB">
+                <td style="padding:4px 8px;text-align:center;color:#ea580c;font-weight:700">${i+1}</td>
+                <td style="padding:3px 4px"><textarea rows="2" style="width:100%;resize:vertical;border:1px solid #D1D5DB;border-radius:3px;padding:3px 6px;font-size:0.9em" data-f="1">${(r[1]||'').replace(/"/g,'&quot;')}</textarea></td>
+                <td style="padding:3px 4px"><input type="text" value="${(r[2]||'').replace(/"/g,'&quot;')}" style="width:100%;border:1px solid #D1D5DB;border-radius:3px;padding:4px 6px;font-size:0.9em" data-f="2"/></td>
+                <td style="padding:3px 4px"><input type="text" value="${(r[3]||'').replace(/"/g,'&quot;')}" style="width:100%;border:1px solid #D1D5DB;border-radius:3px;padding:4px 6px;font-size:0.9em" data-f="3"/></td>
+                <td style="padding:3px 4px"><select style="width:100%;border:1px solid #D1D5DB;border-radius:3px;padding:4px;font-size:0.9em" data-f="4"><option${r[4]==='HIGH'?' selected':''}>HIGH</option><option${r[4]==='MED'?' selected':''}>MED</option><option${r[4]==='LOW'?' selected':''}>LOW</option></select></td>
+                <td style="padding:3px 4px"><textarea rows="2" style="width:100%;resize:vertical;border:1px solid #D1D5DB;border-radius:3px;padding:3px 6px;font-size:0.9em" data-f="5">${(r[5]||'').replace(/"/g,'&quot;')}</textarea></td>
+                <td style="padding:3px 4px;text-align:center"><button onclick="window._apDelRow(${i},'${planKey}','${monthLabel}')" style="background:#FEE2E2;border:none;color:#DC2626;border-radius:3px;padding:3px 7px;cursor:pointer;font-size:0.85em">✕</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="padding:12px 20px;display:flex;gap:10px;border-top:1px solid #E5E7EB;background:#F9FAFB;justify-content:space-between">
+          <button onclick="window._apAddRow('${planKey}','${monthLabel}')" style="background:#166534;color:#fff;border:none;padding:8px 18px;border-radius:4px;cursor:pointer;font-weight:600">+ Add Row</button>
+          <div style="display:flex;gap:10px">
+            <button onclick="document.getElementById('ps-ap-modal').remove()" style="background:#F3F4F6;color:#374151;border:1px solid #D1D5DB;padding:8px 18px;border-radius:4px;cursor:pointer">Cancel</button>
+            <button onclick="window._apSave('${planKey}','${monthLabel}')" style="background:#ea580c;color:#fff;border:none;padding:8px 22px;border-radius:4px;cursor:pointer;font-weight:700">Save & Apply</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  window._apDelRow = function(idx, key, label) {
+    try { const p=JSON.parse(localStorage.getItem(key)||'[]'); p.splice(idx,1); localStorage.setItem(key,JSON.stringify(p)); } catch(e) {}
+    let plan2; try { plan2=JSON.parse(localStorage.getItem(key)); } catch(e) {}
+    if (!Array.isArray(plan2)||!plan2.length) plan2=[['1','','','','HIGH','']];
+    plan = plan2; renderEditor();
+  };
+  window._apAddRow = function(key, label) {
+    window._apSave(key, label, false);
+    try { const p=JSON.parse(localStorage.getItem(key)||'[]'); p.push([String(p.length+1),'','','','HIGH','']); localStorage.setItem(key,JSON.stringify(p)); plan=p; } catch(e) {}
+    renderEditor();
+  };
+  window._apSave = function(key, label, close=true) {
+    const tbody = document.getElementById('ps-ap-rows');
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr')).map((tr,i) => {
+      const get = f => (tr.querySelector(`[data-f="${f}"]`)?.value || '').trim();
+      return [String(i+1), get(1), get(2), get(3), get(4), get(5)];
+    });
+    try { localStorage.setItem(key, JSON.stringify(rows)); } catch(e) {}
+    if (close) {
+      document.getElementById('ps-ap-modal')?.remove();
+      if (window._presGoTo && window._presCur != null) window._presGoTo(window._presCur);
+    }
+  };
+
+  renderEditor();
+  document.body.appendChild(modal);
+};
+
 window.presentReport = async function() {
   const data = window._lastReportData;
   if (!data) { alert('Please generate the report first.'); return; }
@@ -4265,6 +4353,36 @@ window.presentReport = async function() {
 
   const utilD    = (data.utility||[]).filter(r=>r?.[0]&&!/desc|header/i.test(r[0]));
   function fmtUtil(lbl,v){ const n=pN(v); if(n===null) return '—'; return (/value|cost/i.test(String(lbl))||n>=1e6)?fmtRaw(n):Number(Math.round(n)).toLocaleString(); }
+
+  // ── Weekly Sales Parsing ───────────────────────────────────────────────────
+  const ws       = data.weeklySales||[];
+  // Col layout: B(0)=section, C(1)=row label, D(2)=W1, E(3)=W2, F(4)=W3, G(5)=W4, H(6)=W5
+  const WK_COLS  = [2,3,4,5,6];
+  const wsHdrR   = ws.find(r=>WK_COLS.some(ci=>/week\s*\d/i.test(String(r?.[ci]||''))));
+  const wsDateR  = ws.find(r=>WK_COLS.some(ci=>/\d+(st|nd|rd|th)/i.test(String(r?.[ci]||''))));
+  const wsSalesR = ws.find(r=>/sales.*million|million.*sales/i.test(String(r?.[1]||'')));
+  const wsADSR   = ws.find(r=>/ave.*daily|daily.*sales/i.test(String(r?.[1]||'')));
+  const wsDiamI  = ws.findIndex(r=>/diamond/i.test(String(r?.[0]||'')));
+  const wsSilvI  = ws.findIndex(r=>/silver/i.test(String(r?.[0]||'')));
+  const wkLabels = wsHdrR?WK_COLS.map(ci=>String(wsHdrR[ci]||'').replace(/^week\s*/i,'W').replace(/\s/,'').trim()||`W${ci-1}`):['W1','W2','W3','W4','W5'];
+  const wkDates  = wsDateR?WK_COLS.map(ci=>String(wsDateR[ci]||'')):['1ST-7TH','8TH-14TH','15TH-21ST','22ND-28TH','29TH-30TH'];
+  const wkSales  = wsSalesR?WK_COLS.map(ci=>pN(wsSalesR[ci])):[801,758,747,772,201];
+  const wkADS    = wsADSR?WK_COLS.map(ci=>pN(wsADSR[ci])):[114,108,107,110,101];
+  function wkDayCount(s){ const m=String(s).match(/(\d+)[^\d]+(\d+)/); return m?+m[2]-+m[1]+1:7; }
+  const wkDays   = wkDates.map(wkDayCount);
+  const wkIsFull = wkDays.map(d=>d>=5);
+  const peakWkI  = wkSales.reduce((mi,v,i)=>v!=null&&(mi<0||v>wkSales[mi])?i:mi,-1);
+  const weakWkI  = wkSales.reduce((mi,v,i)=>wkIsFull[i]&&v!=null&&(mi<0||v<wkSales[mi])?i:mi,-1);
+  function getStockRows(si){ if(si<0) return []; const rows=[]; for(let i=si+1;i<ws.length;i++){ const r=ws[i]; if(!r) break; if(r[0]&&String(r[0]).trim()&&!/diamond|silver/i.test(String(r[0]))) break; if(r[1]&&String(r[1]).trim()) rows.push({cat:String(r[1]),vals:WK_COLS.map(ci=>{const v=parseFloat(String(r[ci]||'').replace('%','')); return isNaN(v)?null:v;})}); } return rows; }
+  const wsDiamond= getStockRows(wsDiamI);
+  const wsSilver = getStockRows(wsSilvI);
+  function wsAvg(vals){ const v=vals.filter(x=>x!=null); return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; }
+
+  // ── Next month label ───────────────────────────────────────────────────────
+  const ALL_MONTHS=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const mIdx2    = ALL_MONTHS.indexOf(mLabel);
+  const nextML   = mIdx2>=0?ALL_MONTHS[(mIdx2+1)%12]:'JUL';
+  const nextMFull= MFULL[nextML]||nextML;
 
   // Revenue Overview presenter month data
   const rovMonths= rovCols.slice(0,6);
@@ -4589,17 +4707,41 @@ window.presentReport = async function() {
     </div>
   </div>`);
 
-  // Slide 13: Weekly Sales
-  const wkStatic=[{lbl:'Week 1 (1–7)',sales:'N801M',ads:'N114M/day',low:false},{lbl:'Week 2 (8–14)',sales:'N758M',ads:'N108M/day',low:false},{lbl:'Week 3 (15–21)',sales:'N747M',ads:'N107M/day',low:true},{lbl:'Week 4 (22–28)',sales:'N772M',ads:'N110M/day',low:false},{lbl:'Week 5 (29–30)',sales:'N202M',ads:'N101M/day',low:false}];
+  // Slide 13: Weekly Sales (dynamic from WEEKLY SALES sheet)
+  const wkTitle13 = peakWkI>=0&&wkSales[peakWkI]!=null
+    ? `${fullMonth} Weekly Sales: ${wkLabels[peakWkI]} Peaks at N${Math.round(wkSales[peakWkI])}M`
+    : `${fullMonth} Weekly Sales`;
+  function stockColor(v){ return v!=null?(v>=90?'#166534':v>=85?'#15803d':v>=80?'#D97706':'#DC2626'):'#6B7280'; }
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('CATEGORY',`${fullMonth.toUpperCase()} WEEKLY SALES & STOCK AVAILABILITY`,13)}
+    ${slideHeader('CATEGORY',wkTitle13,13)}
     <div class="ps-body">
-      <div class="ps-week-cards">${wkStatic.map(w=>`<div class="ps-week-card" style="border:2px solid ${w.low?'#D97706':'#166534'};background:${w.low?'#FEF3C7':'#F0FDF4'}"><div class="ps-wk-lbl" style="color:#6B7280">${w.lbl}</div><div class="ps-wk-sales" style="color:${w.low?'#D97706':'#166534'}">${w.sales}</div><div class="ps-wk-ads" style="color:${w.low?'#D97706':'#166534'}">${w.ads}</div></div>`).join('')}</div>
-      ${sLabel('STOCK AVAILABILITY BY LINE')}
-      ${table(['CATEGORY LINE','W1','W4','AVG'],
-        [['Diamond Lines Grocery','79%','83%','81%'],['Diamond Lines Toiletries','83%','84%','84%'],['Diamond Lines Fresh Food','84%','86%','86%'],['Silver Lines Grocery','76%','79%','78%'],['Silver Lines Toiletries','84%','86%','86%'],['Silver Lines Fresh Food','90%','91%','91%']].map(r=>[ r[0], ...r.slice(1).map(v=>({text:v,style:`text-align:center;font-weight:700;color:${parseFloat(v)>=90?'#166534':parseFloat(v)>=85?'#15803d':'#D97706'}`})) ])
-      )}
-      <div class="ps-insight-banner">Week 3 was weakest. Silver Lines Fresh Food strongest at 91%. Diamond Lines Grocery needs improvement at 81%.</div>
+      <div class="ps-week-cards">
+        ${WK_COLS.map((_,i)=>{
+          const s=wkSales[i],a=wkADS[i],isWeak=i===weakWkI,isPart=!wkIsFull[i];
+          const col=isWeak?'#D97706':isPart?'#6B7280':'#166534';
+          const bg=isWeak?'#FEF3C7':isPart?'#F3F4F6':'#F0FDF4';
+          return `<div class="ps-week-card" style="border:2px solid ${col};background:${bg}">
+            <div class="ps-wk-lbl" style="color:#6B7280">${wkLabels[i]}${wkDates[i]?` (${wkDates[i]})`:''}${isPart?'<br/><span style="font-size:0.72em;color:#6B7280">partial</span>':''}</div>
+            <div class="ps-wk-sales" style="color:${col}">${s!=null?`N${Math.round(s)}M`:'—'}</div>
+            <div class="ps-wk-ads" style="color:${col}">${a!=null?`N${Math.round(a)}M/day`:'—'}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="ps-split" style="gap:14px;flex:1;min-height:0">
+        <div style="flex:1;overflow:hidden">
+          ${wsDiamond.length?`
+            <div class="ps-section-tag">DIAMOND LINES STOCK AVAILABILITY %</div>
+            ${table(['CATEGORY',...wkLabels,'AVG'],wsDiamond.map(row=>[row.cat,...row.vals.map(v=>({text:v!=null?`${Math.round(v)}%`:'—',style:`text-align:center;font-weight:700;color:${stockColor(v)}`})),{text:(a=>a!=null?`${Math.round(a)}%`:'—')(wsAvg(row.vals)),style:'text-align:center;font-weight:700;background:#F0FDF4'}]))}
+          `:'<p class="ps-no-data">Diamond Lines data not detected</p>'}
+        </div>
+        <div style="flex:1;overflow:hidden">
+          ${wsSilver.length?`
+            <div class="ps-section-tag" style="color:#ea580c">SILVER LINES STOCK AVAILABILITY %</div>
+            ${table(['CATEGORY',...wkLabels,'AVG'],wsSilver.map(row=>[row.cat,...row.vals.map(v=>({text:v!=null?`${Math.round(v)}%`:'—',style:`text-align:center;font-weight:700;color:${stockColor(v)}`})),{text:(a=>a!=null?`${Math.round(a)}%`:'—')(wsAvg(row.vals)),style:'text-align:center;font-weight:700;background:#FFF7ED'}]),true)}
+          `:'<p class="ps-no-data">Silver Lines data not detected</p>'}
+        </div>
+      </div>
+      ${weakWkI>=0?`<div class="ps-insight-banner">${wkLabels[weakWkI]} was the weakest full week at N${Math.round(wkSales[weakWkI])}M. ${(()=>{const sfmx=wsSilver.reduce((mx,r)=>{const a=wsAvg(r.vals);return a!=null&&a>mx.a?{cat:r.cat,a}:mx;},{cat:'',a:-1});const sdmn=wsDiamond.reduce((mn,r)=>{const a=wsAvg(r.vals);return a!=null&&a<mn.a?{cat:r.cat,a}:mn;},{cat:'',a:101});return sfmx.cat?`Silver ${sfmx.cat} strongest at ${Math.round(sfmx.a)}%. Diamond ${sdmn.cat} needs improvement at ${Math.round(sdmn.a)}%.`:''})()}</div>`:''}
     </div>
   </div>`);
 
@@ -4658,28 +4800,46 @@ window.presentReport = async function() {
     </div>
   </div>`);
 
-  // Slide 17: Action Plan
-  const junePlan=[['1','Launch June Jumbo savings promo','HSO','Jun 15','HIGH','Revenue uplift vs May (125M WOW)'],['2','Urgent intervention for lagging outlets','HSO','Jun 30','HIGH','Restore 3 outlets to 85%+ (Not achieved)'],['3','Deliver 95% manning execution','HSO','Jun 30','HIGH','Improve engagement (Currently 91%)'],['4','Drive Cashier/Bread decline','Ops Mgr','Jun 30','HIGH','Reduce to -10% (Fell to -14%)'],['5','Drive Diesel cost reduction','Ops Mgr','Jun 30','HIGH','Save N15M (Saved N12.7M)'],['6','Follow up Affordability campaign','Category Mgt','Jun 30','HIGH','Perception +8%'],['7','Initiate Corporate sales & hampers','Olufunmi','Jun 15','MED','Expected N20M (Actual N1.5M)'],['8','Drive Chop Beta improved sales','Fisayo','Jun 30','MED','+25% over May (Achieved 100%)']];
-  const julyPlan=[['1','Launch July promotional push','HSO','Jul 15','HIGH','Revenue uplift'],['2','Execute two outlet intervention plans','HSO','Jul 15','HIGH','Restore 3 to 82%+'],['3','Area Coach assessment twice monthly','HSO','Jul 15/30','HIGH','Enhance performance'],['4','Drive Cashier/Bread decline recovery','Ops Mgr','Jul 31','HIGH','Recover to -10%'],['5','Merchandising — rainy season items','Silas','Jul 10','HIGH','Improve visibility'],['6','Execute Chop Beta/Grill campaign','Adio','Jul 10','MED','Enhance 3F revenue'],['7','Cashier manning to 100%','Adio','Jul 15','HIGH','Service delivery'],['8','Deliver 95% manning with HR','Godspower/HSO','Jul 15','HIGH','Customer engagement'],['9','"HERE TO HELP" campaign','HSO','Jul 15','HIGH','Customer excitement']];
-  SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('','PRIORITIES & ACTION PLAN TRACKER',17)}
-    <div class="ps-body ps-split" style="gap:16px;align-items:flex-start">
-      <div style="flex:1">
-        ${sLabel('JUNE 2026 PRIORITIES — REVIEW')}
-        ${table(['#','ACTION ITEM','OWNER','TIME','PRIORITY','IMPACT / RESULT'],
-          junePlan.map(r=>[ {text:r[0],style:'text-align:center;font-weight:700;color:#ea580c'}, r[1], {text:r[2],style:'text-align:center;font-size:0.82em'}, {text:r[3],style:'text-align:center;font-size:0.82em'}, {text:r[4],style:`text-align:center;font-weight:700;color:${r[4]==='HIGH'?'#ea580c':'#6B7280'}`}, {text:r[5],style:'font-size:0.8em;color:#374151'} ]),
-          false, true
-        )}
+  // Slides 17 & 18: Action Plan (localStorage-backed, editable in-presentation)
+  // Sentinel strings — goTo() rebuilds these dynamically so edits are reflected immediately
+  const AP_JUN_KEY = `foodco_ap_${mLabel.toLowerCase()}`;
+  const AP_JUL_KEY = `foodco_ap_${nextML.toLowerCase()}`;
+  const defaultJunPlan=[['1','Launch Jumbo savings promotional push to sustain momentum','HSO',`${fullMonth} 15`,'HIGH','Revenue uplift vs May baseline — 125M WOW before promo period'],['2','Urgent intervention for Jericho, Gbagi, Lekki, Adegbayi, Akala, Ikotun on revenue','HSO',`${fullMonth} 30`,'HIGH','Restore 3 outlets to 85%+ achievement'],['3','Deliver 95% manning execution','HSO',`${fullMonth} 30`,'HIGH','Improve customer engagement'],['4','Continuous drive Cashier/Bread -17% decline','Operations Support Mgr',`${fullMonth} 30`,'HIGH','Reduce decline and recover to -10%'],['5','Drive initiative on High savings / High Pay Diesel cost reduction plan','Operations Support',`${fullMonth} 30`,'HIGH','Save N15M power costs'],['6','Strong follow up on Affordability campaign instore — Shelf talkers/Associate communication','Category Mgt Team',`${fullMonth} 30`,'HIGH','Improve customer perception on being most affordable'],['7','Initiate Corporate sales and Offcycle hamper production','Olufunmi',`${fullMonth} 15`,'MED','+20M sales revenue expected'],['8','Drive Chop Beta improved sales','Fisayo',`${fullMonth} 30`,'MED','Achieve +25% sales growth over previous month']];
+  const defaultJulPlan=[['1',`Launch ${nextMFull} promotional push for end of month through first week in August`,'HSO',`${nextMFull} 15`,'HIGH','Revenue uplift'],['2','Execute two key intervention plan for Jericho, Gbagi, Lekki, Adegbayi, Akala, Ikotun on revenue','HSO',`${nextMFull} 15`,'HIGH','Restore 3 outlets to 82%+ achievement'],['3','Area Coach performance assessment twice monthly','HSO',`${nextMFull} 15, 30`,'HIGH','Enhance overall performance'],['4','Continuous drive Cashier/Bread -14% decline','Operations Support Mgr',`${nextMFull} 31`,'HIGH','Reduce decline and recover to -10%'],['5','Drive merchandising focus on raining season key items','Silas',`${nextMFull} 10`,'HIGH','Improve visibility and revenue'],['6','Execute Chop Beta/Grill offering campaign (Free drink)','Adio',`${nextMFull} 10`,'MED','Enhance revenue for 3F'],['7','Cashier manning status to hit 100%','Adio',`${nextMFull} 15`,'HIGH','Improve service delivery'],['8','Deliver 95% manning execution with HR - Godspower','HSO',`${nextMFull} 15`,'HIGH','Improve customer engagement and merchandising'],['9','Drive "HERE TO HELP CAMPAIGN" shopfloor team','HSO',`${nextMFull} 15`,'HIGH','Customer excitement']];
+
+  function loadAP(key,fallback){ try{ const s=JSON.parse(localStorage.getItem(key)); return Array.isArray(s)&&s.length?s:fallback; }catch(e){return fallback;} }
+  function buildAPSlide(monthLabel,planKey,fallback,pgN,isNext){
+    const plan=loadAP(planKey,fallback);
+    const hbg=isNext?'#ea580c':'#166534';
+    const rows=plan.map((r,i)=>`<tr class="${i%2?'ps-alt':''}"><td style="text-align:center;font-weight:700;color:#ea580c;width:36px">${esc(r[0])}</td><td style="font-size:0.88em">${esc(r[1])}</td><td style="text-align:center;font-size:0.8em;white-space:nowrap">${esc(r[2])}</td><td style="text-align:center;font-size:0.8em;white-space:nowrap">${esc(r[3])}</td><td style="text-align:center;font-weight:700;font-size:0.88em;color:${r[4]==='HIGH'?'#DC2626':r[4]==='MED'?'#166534':'#6B7280'}">${esc(r[4])}</td><td style="font-size:0.8em;color:#374151">${esc(r[5])}</td></tr>`).join('');
+    return `<div class="ps-slide">
+      ${tabBar('')}
+      <div class="ps-titlerow" style="position:relative">
+        <div><div class="ps-title" style="color:#00843D;font-size:1.35em">ACTION SUMMARY — PRIORITIZED INITIATIVES FOR ${monthLabel}</div><div class="ps-title-accent" style="background:${hbg}"></div></div>
+        ${LOGO_HTML}
+        <button onclick="window._apEdit('${planKey}','${monthLabel}')" style="position:absolute;right:62px;top:50%;transform:translateY(-50%);background:${hbg};color:#fff;border:none;padding:5px 13px;border-radius:4px;cursor:pointer;font-size:0.8em;font-weight:700;z-index:5">✏ Edit</button>
+        <span class="ps-pgnum">${pgN}</span>
       </div>
-      <div style="flex:1">
-        ${sLabel('JULY 2026 FORWARD TARGETS',true)}
-        ${table(['#','ACTION ITEM','OWNER','TIME','PRIORITY','IMPACT'],
-          julyPlan.map(r=>[ {text:r[0],style:'text-align:center;font-weight:700;color:#ea580c'}, r[1], {text:r[2],style:'text-align:center;font-size:0.82em'}, {text:r[3],style:'text-align:center;font-size:0.82em'}, {text:r[4],style:`text-align:center;font-weight:700;color:${r[4]==='HIGH'?'#ea580c':'#6B7280'}`}, {text:r[5],style:'font-size:0.8em;color:#374151'} ]),
-          true, true
-        )}
+      <div class="ps-body" style="padding-top:4px">
+        <div class="ps-tbl-wrap"><table class="ps-tbl" style="table-layout:fixed;width:100%"><thead><tr>
+          <th style="background:${hbg};width:36px">#</th>
+          <th style="background:${hbg};text-align:left">ACTION ITEM</th>
+          <th style="background:${hbg};width:110px">OWNER</th>
+          <th style="background:${hbg};width:90px">TIMELINE</th>
+          <th style="background:${hbg};width:80px">PRIORITY</th>
+          <th style="background:${hbg};text-align:left;width:220px">LIKELY IMPACT</th>
+        </tr></thead><tbody>${rows}</tbody></table></div>
+        <div style="position:absolute;bottom:6px;left:32px;font-size:0.72em;color:#9CA3AF">Sales Operations | Monthly Performance Report</div>
       </div>
-    </div>
-  </div>`);
+    </div>`;
+  }
+
+  // Push sentinels — goTo() resolves them at render time
+  SLIDES.push('__AP_JUN__');
+  SLIDES.push('__AP_JUL__');
+  // Capture slide indices for the resolver
+  const AP_JUN_IDX = SLIDES.length - 2;
+  const AP_JUL_IDX = SLIDES.length - 1;
 
   // Slide 18: Thank You
   SLIDES.push(`<div class="ps-slide ps-cover">
@@ -4835,18 +4995,23 @@ window.presentReport = async function() {
   let cur=0;
   function goTo(n){
     cur=Math.max(0,Math.min(SLIDES.length-1,n));
-    frame.innerHTML=SLIDES[cur];
-    // Re-resolve logo if it loaded after build
+    window._presCur=cur;
+    let html=SLIDES[cur];
+    // Resolve action plan sentinels dynamically so edits show immediately
+    if(html==='__AP_JUN__') html=buildAPSlide(`${fullMonth.toUpperCase()} 2026`,AP_JUN_KEY,defaultJunPlan,cur+1,false);
+    if(html==='__AP_JUL__') html=buildAPSlide(`${nextMFull.toUpperCase()} 2026`,AP_JUL_KEY,defaultJulPlan,cur+1,true);
+    frame.innerHTML=html;
     if(window._presLogoUrl){
       frame.querySelectorAll('.ps-cover-logo,.ps-logo').forEach(el=>{if(el.tagName==='IMG')el.src=window._presLogoUrl;});
     }
     document.getElementById('ps-counter').textContent=`${cur+1} / ${SLIDES.length}`;
     progress.style.width=`${((cur+1)/SLIDES.length)*100}%`;
   }
+  window._presGoTo=goTo;
   goTo(0);
   document.getElementById('ps-prev').onclick=()=>goTo(cur-1);
   document.getElementById('ps-next').onclick=()=>goTo(cur+1);
-  closeBtn.onclick=()=>{ document.body.removeChild(overlay); window.removeEventListener('resize',scaleFrame); document.removeEventListener('keydown',keyHandler); };
+  closeBtn.onclick=()=>{ document.body.removeChild(overlay); window.removeEventListener('resize',scaleFrame); document.removeEventListener('keydown',keyHandler); window._presGoTo=null; window._presCur=null; };
   function keyHandler(e){
     if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' ') goTo(cur+1);
     else if(e.key==='ArrowLeft'||e.key==='ArrowUp') goTo(cur-1);

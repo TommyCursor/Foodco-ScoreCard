@@ -90,10 +90,11 @@ export default async function handler(req) {
       'OUTLETS PERFORMANCE!A2:F35',
       'AREA & REGION!A2:F8',
       'AREA & REGION!A10:F65',
-      'TOP REVENUE STORES!A1:R22',
-      'CATEGORY SALES!B1:H14',
+      'TOP REVENUE STORES!A1:Z30',
+      'CATEGORY SALES!B1:I14',
       'CATEGORY SALES!A17:F32',
-      'WEEKLY SALES!B3:G19',
+      'WEEKLY SALES!B3:H19',
+      'CATEGORY PERFORMANCE!B1:H100',
       'YOY!A1:I60',
       'UTILITY & POWER COST!A2:J14',
     ];
@@ -121,8 +122,9 @@ export default async function handler(req) {
       categorySalesYTD:    vr[7]?.values  || [],
       categorySalesLatest: vr[8]?.values  || [],
       weeklySales:         vr[9]?.values  || [],
-      yoy:                 vr[10]?.values || [],
-      utility:             vr[11]?.values || [],
+      categoryPerf:        vr[10]?.values || [],
+      yoy:                 vr[11]?.values || [],
+      utility:             vr[12]?.values || [],
     }), { status: 200, headers: JSON_HEADERS });
 
   } catch (err) {
