@@ -4169,6 +4169,75 @@ window.downloadAsPptx = async function() {
 };
 
 // ── Browser Presentation Mode ─────────────────────────────────────────────────
+
+// ── Presentation themes ────────────────────────────────────────────────────────
+const PS_THEMES = [
+  { id:'emerald',   name:'Emerald',   desc:'FoodCo signature — forest green & orange',
+    brand:'#166534', brandMid:'#15803d', brandDark:'#0D3318', brandLight:'#4ade80', brandBg:'#F0FDF4',
+    accent:'#ea580c', accentDark:'#c2410c', accentBg:'#FFF7ED' },
+  { id:'midnight',  name:'Midnight',  desc:'Deep navy with amber gold — executive authority',
+    brand:'#1e3a5f', brandMid:'#1d4ed8', brandDark:'#0f1f35', brandLight:'#93c5fd', brandBg:'#eff6ff',
+    accent:'#d97706', accentDark:'#b45309', accentBg:'#fef3c7' },
+  { id:'slate',     name:'Slate',     desc:'Royal blue with teal — clean corporate',
+    brand:'#1e40af', brandMid:'#2563eb', brandDark:'#1e3a8a', brandLight:'#93c5fd', brandBg:'#eff6ff',
+    accent:'#0891b2', accentDark:'#0e7490', accentBg:'#ecfeff' },
+  { id:'executive', name:'Executive', desc:'Dark charcoal with gold — boardroom premium',
+    brand:'#292524', brandMid:'#44403c', brandDark:'#1c1917', brandLight:'#f5d16a', brandBg:'#fafaf9',
+    accent:'#b8860b', accentDark:'#92400e', accentBg:'#fef9e7' },
+  { id:'rose',      name:'Rose',      desc:'Deep rose with amber — modern and bold',
+    brand:'#9d174d', brandMid:'#be185d', brandDark:'#4c0519', brandLight:'#fda4af', brandBg:'#fff1f2',
+    accent:'#b45309', accentDark:'#92400e', accentBg:'#fef3c7' },
+];
+
+function showThemePicker(onSelect) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(6,6,8,0.97);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Segoe UI,Arial,sans-serif;';
+  overlay.innerHTML = `
+    <div style="text-align:center;margin-bottom:44px">
+      <div style="color:rgba(255,255,255,0.45);font-size:0.85em;letter-spacing:5px;text-transform:uppercase;margin-bottom:10px">FoodCo Nigeria Sales Report</div>
+      <div style="color:#fff;font-size:2.4em;font-weight:800;letter-spacing:2px;line-height:1">CHOOSE A PRESENTATION THEME</div>
+      <div style="width:56px;height:3px;background:#ea580c;margin:16px auto 0;border-radius:2px"></div>
+    </div>
+    <div style="display:flex;gap:18px;justify-content:center">
+      ${PS_THEMES.map(T=>`
+        <button onclick="window._themePickerSelect('${T.id}')"
+          style="all:unset;cursor:pointer;width:190px;border-radius:10px;overflow:hidden;background:#141418;border:2px solid #2a2a32;transition:border-color .2s,transform .2s;box-shadow:0 6px 28px rgba(0,0,0,.5)"
+          onmouseover="this.style.borderColor='${T.accent}';this.style.transform='translateY(-5px)'"
+          onmouseout="this.style.borderColor='#2a2a32';this.style.transform=''">
+          <div style="background:${T.brandDark};padding:12px 14px">
+            <div style="display:flex;gap:6px;margin-bottom:8px">
+              ${[1,2,3,4,5].map(()=>`<div style="flex:1;height:5px;background:rgba(255,255,255,0.18);border-radius:2px"></div>`).join('')}
+            </div>
+            <div style="height:6px;background:${T.brand};border-radius:2px;width:55%;margin-bottom:5px"></div>
+            <div style="height:4px;background:${T.accent};border-radius:2px;width:32%"></div>
+          </div>
+          <div style="background:${T.brandBg};padding:9px 14px">
+            <div style="display:flex;gap:5px;margin-bottom:6px">
+              ${[1,2,3].map(()=>`<div style="flex:1;height:30px;background:${T.brand};border-radius:3px;opacity:0.14"></div>`).join('')}
+            </div>
+            <div style="height:4px;background:${T.accent};border-radius:2px;width:44%;opacity:0.55"></div>
+          </div>
+          <div style="padding:13px 14px;background:#141418">
+            <div style="color:#fff;font-weight:800;font-size:0.9em;letter-spacing:2px;margin-bottom:3px">${T.name.toUpperCase()}</div>
+            <div style="color:#71717a;font-size:0.72em;line-height:1.45">${T.desc}</div>
+          </div>
+        </button>
+      `).join('')}
+    </div>
+    <div style="color:#3f3f46;font-size:0.8em;margin-top:38px;letter-spacing:.5px">Click a theme to start your presentation &nbsp;·&nbsp; Press Esc to cancel</div>
+  `;
+  window._themePickerSelect = id => {
+    const T = PS_THEMES.find(t => t.id === id);
+    if (!T) return;
+    document.body.removeChild(overlay);
+    delete window._themePickerSelect;
+    onSelect(T);
+  };
+  const escHandler = e => { if (e.key === 'Escape') { document.body.removeChild(overlay); document.removeEventListener('keydown', escHandler); delete window._themePickerSelect; } };
+  document.addEventListener('keydown', escHandler);
+  document.body.appendChild(overlay);
+}
+
 // ── Action Plan in-presentation editor ────────────────────────────────────────
 window._apEdit = function(planKey, monthLabel) {
   // Load current plan data
@@ -4297,7 +4366,7 @@ window.presentReport = async function() {
   // Start-of-string month match: "APR","JUNE","Jun-26" all match; "SUPERMARKET" does NOT (starts with S)
   // Exclude YTD/total columns so "JUNE YTD" isn't treated as a data month
   const mRe      = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
-  const mColRe   = c => mRe.test(String(c)) && !/ytd|total|budget|target|\d{4}/i.test(String(c));
+  const mColRe   = c => mRe.test(String(c)) && !/ytd|total|budget|target/i.test(String(c));
   // Also used to detect/skip header-like rows in section parsers
   const isHdrRow = r => mRe.test(String(r?.[0]||'')) || /^business$/i.test(String(r?.[0]||'').trim());
   let rovHdr     = rov.find(r=>r?.slice(1).some(c=>mColRe(c)));
@@ -4423,6 +4492,44 @@ window.presentReport = async function() {
     ? `<img src="${window._presLogoUrl}" class="ps-logo" alt="FoodCo"/>`
     : `<span class="ps-logo-text">FoodCo</span>`;
 
+  // ── Theme selection ────────────────────────────────────────────────────────
+  const T = await new Promise(resolve => showThemePicker(resolve));
+
+  // ── Theme color replacer (for pre-built slide HTML) ────────────────────────
+  // Protects status-cell text colours by requiring absence of ;background:#DCFCE7
+  function applyTheme(html) {
+    if (typeof html !== 'string' || html.startsWith('__')) return html;
+    return html
+      // backgrounds
+      .replace(/background:#166534/g,  `background:${T.brand}`)
+      .replace(/background:#0D3318/g,  `background:${T.brandDark}`)
+      .replace(/background:#1E3A2A/g,  `background:${T.brandDark}`)
+      .replace(/background:#F0FDF4/g,  `background:${T.brandBg}`)
+      .replace(/background:#4ade80/g,  `background:${T.brandLight}`)
+      .replace(/background:#ea580c/g,  `background:${T.accent}`)
+      .replace(/background:#FFF7ED/g,  `background:${T.accentBg}`)
+      // text colours — skip status cell pattern (color:X;background:#DCFCE7)
+      .replace(/color:#166534(?!;background:#DCFCE7)/g, `color:${T.brand}`)
+      .replace(/color:#00843D/g,       `color:${T.brand}`)
+      .replace(/color:#AADDB0/g,       `color:${T.brandLight}`)
+      .replace(/color:#ea580c/g,       `color:${T.accent}`)
+      .replace(/color:#c2410c(?!;background:#FEE2E2)/g, `color:${T.accentDark}`)
+      // border variants
+      .replace(/border-color:#166534/g, `border-color:${T.brand}`)
+      .replace(/border-color:#ea580c/g, `border-color:${T.accent}`)
+      .replace(/border:1px solid #166534/g, `border:1px solid ${T.brand}`)
+      .replace(/border-left:[^;]*solid #166534/g, m => m.replace('#166534', T.brand))
+      .replace(/border-left:[^;]*solid #ea580c/g, m => m.replace('#ea580c', T.accent))
+      // SVG attributes
+      .replace(/stroke="#166534"/g,    `stroke="${T.brand}"`)
+      .replace(/stroke="#ea580c"/g,    `stroke="${T.accent}"`)
+      .replace(/fill="#166534"/g,      `fill="${T.brand}"`)
+      .replace(/fill="#ea580c"/g,      `fill="${T.accent}"`)
+      // inline solid border shorthands
+      .replace(/6px solid #166534/g,   `6px solid ${T.brand}`)
+      .replace(/6px solid #ea580c/g,   `6px solid ${T.accent}`);
+  }
+
   // ── Slide builder helpers ──────────────────────────────────────────────────
   const TABS=['REVENUE','GROWTH','OUTLETS','CATEGORY','COMPARISON'];
   function tabBar(active){
@@ -4432,13 +4539,14 @@ window.presentReport = async function() {
     return `${tabBar(active)}<div class="ps-titlerow"><div><div class="ps-title">${esc(title)}</div><div class="ps-title-accent"></div></div>${LOGO_HTML}<span class="ps-pgnum">${String(pg).padStart(2,'0')}</span></div>`;
   }
   function kpiCard(label,val,col,bg,border){
-    return `<div class="ps-kpi-card" style="border-color:${border};background:${bg}"><div class="ps-kpi-label">${esc(label)}</div><div class="ps-kpi-val" style="color:${col}">${esc(val)}</div></div>`;
+    const c=col||T.brand, b=bg||T.brandBg, brd=border||T.brand;
+    return `<div class="ps-kpi-card" style="border-color:${brd};background:${b}"><div class="ps-kpi-label">${esc(label)}</div><div class="ps-kpi-val" style="color:${c}">${esc(val)}</div></div>`;
   }
   function sLabel(text,orange=false){
-    return `<div class="ps-slabel" style="color:${orange?'#ea580c':'#166534'}">${esc(text)}<div class="ps-slabel-bar"></div></div>`;
+    return `<div class="ps-slabel" style="color:${orange?T.accent:T.brand}">${esc(text)}<div class="ps-slabel-bar" style="background:${T.accent}"></div></div>`;
   }
   function table(headers,rows,orangeHdr=false,compact=false){
-    const hbg=orangeHdr?'#ea580c':'#166534';
+    const hbg=orangeHdr?T.accent:T.brand;
     // Infer per-column alignment from first data row so headers match data
     const firstRow=rows[0]||[];
     const hAligns=headers.map((_,i)=>{
@@ -4985,6 +5093,41 @@ window.presentReport = async function() {
     document.head.appendChild(style);
   }
 
+  // ── Apply theme to pre-built slides ───────────────────────────────────────
+  for (let i=0;i<SLIDES.length;i++) SLIDES[i]=applyTheme(SLIDES[i]);
+
+  // ── Inject theme override CSS (updates class-based colors) ───────────────
+  const themeStyleId = 'ps-theme-style';
+  let themeStyle = document.getElementById(themeStyleId);
+  if (!themeStyle) { themeStyle = document.createElement('style'); themeStyle.id = themeStyleId; document.head.appendChild(themeStyle); }
+  themeStyle.textContent = `
+    .ps-tabbar{background:${T.brand}!important;}
+    .ps-tab-on::after{background:${T.accent}!important;}
+    .ps-orange-stripe{background:${T.accent}!important;}
+    .ps-title{color:${T.brand}!important;}
+    .ps-title-accent{background:${T.accent}!important;}
+    .ps-slabel{color:${T.brand}!important;}
+    .ps-slabel-bar{background:${T.accent}!important;}
+    .ps-section-tag{color:${T.accent}!important;}
+    .ps-cover{background:${T.brandDark}!important;}
+    .ps-cover-logo-text{color:${T.brandLight}!important;}
+    .ps-cover-line{background:${T.brandLight}!important;}
+    .ps-cover-sub{color:${T.brandLight}!important;}
+    .ps-cover-role{color:${T.brandLight}!important;}
+    .ps-cover-date{color:${T.brandLight}!important;}
+    .ps-cover-footer{background:${T.accent}!important;}
+    .ps-bar-body{background:${T.brand}!important;}
+    .ps-bar-val{color:${T.brand}!important;}
+    .ps-insight-title{color:${T.brand}!important;}
+    .ps-dept-header{background:${T.brand}!important;}
+    .ps-insight-banner{background:${T.brandBg}!important;border-color:${T.brand}!important;}
+    .ps-logo-text{color:${T.brand}!important;}
+    .ps-tbl tbody tr:hover td{background:${T.brandBg}!important;}
+    #ps-progress{background:${T.accent}!important;}
+    #ps-close:hover{background:${T.accent}!important;}
+    #ps-controls button:hover{background:${T.accent}!important;border-color:${T.accent}!important;}
+  `;
+
   // ── DOM assembly ──────────────────────────────────────────────────────────
   const overlay=document.createElement('div'); overlay.id='ps-overlay';
   const progress=document.createElement('div'); progress.id='ps-progress';
@@ -5013,8 +5156,8 @@ window.presentReport = async function() {
     window._presCur=cur;
     let html=SLIDES[cur];
     // Resolve action plan sentinels dynamically so edits show immediately
-    if(html==='__AP_JUN__') html=buildAPSlide(`${fullMonth.toUpperCase()} 2026`,AP_JUN_KEY,defaultJunPlan,cur+1,false);
-    if(html==='__AP_JUL__') html=buildAPSlide(`${nextMFull.toUpperCase()} 2026`,AP_JUL_KEY,defaultJulPlan,cur+1,true);
+    if(html==='__AP_JUN__') html=applyTheme(buildAPSlide(`${fullMonth.toUpperCase()} 2026`,AP_JUN_KEY,defaultJunPlan,cur+1,false));
+    if(html==='__AP_JUL__') html=applyTheme(buildAPSlide(`${nextMFull.toUpperCase()} 2026`,AP_JUL_KEY,defaultJulPlan,cur+1,true));
     frame.innerHTML=html;
     if(window._presLogoUrl){
       frame.querySelectorAll('.ps-cover-logo,.ps-logo').forEach(el=>{if(el.tagName==='IMG')el.src=window._presLogoUrl;});
