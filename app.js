@@ -4294,21 +4294,33 @@ window.presentReport = async function() {
   function fmtBil(v){ const n=pN(v); if(n===null) return '—'; return Math.abs(n)>=1?`N${Math.abs(n).toFixed(2)}B`:`N${(Math.abs(n)*1000).toFixed(0)}M`; }
 
   const rov      = data.revenueOverview||[];
-  let rovHdr     = rov.find(r=>r?.slice(1).some(c=>/jan|feb|mar|apr|may|jun/i.test(String(c))));
-  if(!rovHdr) rovHdr = rov.find(r=>r?.some(c=>/jan|feb|mar|apr|may|jun/i.test(String(c))));
-  const rovCols  = rovHdr?rovHdr.filter(c=>c&&/jan|feb|mar|apr|may|jun/i.test(String(c))):[];
+  // Word-boundary regex prevents "SUPERMARKET" matching /mar/ or "JUNE YTD" being double-counted
+  const mRe      = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+  let rovHdr     = rov.find(r=>r?.slice(1).some(c=>mRe.test(String(c))));
+  if(!rovHdr) rovHdr = rov.find(r=>r?.some(c=>mRe.test(String(c))));
+  const rovCols  = rovHdr?rovHdr.filter(c=>c&&mRe.test(String(c))):[];
   const rovIdx   = rovHdr?rovCols.map(c=>rovHdr.indexOf(c)):[];
   let coreBiz=[],otherBiz=[],inC=false,inO=false;
-  for(const r of rov){ if(!r?.[0]) continue; if(/core business/i.test(r[0])){inC=true;inO=false;continue;} if(/other.*business|other.*key/i.test(r[0])){inO=true;inC=false;continue;} if(inC&&r.length>=2)coreBiz.push(r); if(inO&&r.length>=2)otherBiz.push(r); }
+  for(const r of rov){
+    if(!r?.[0]) continue;
+    if(/core business/i.test(r[0])){inC=true;inO=false;continue;}
+    if(/other.*business|other.*key/i.test(r[0])){inO=true;inC=false;continue;}
+    // Skip column header rows (rows whose first cell is "Business" or matches a month)
+    if(mRe.test(String(r[0]))||/^business$/i.test(String(r[0]).trim())) continue;
+    if(inC&&r.length>=2) coreBiz.push(r);
+    if(inO&&r.length>=2) otherBiz.push(r);
+  }
   const smRow    = coreBiz.find(r=>/supermarket|sm\b/i.test(r[0]));
   const rstRow   = coreBiz.find(r=>/restaurant|rst\b/i.test(r[0]));
   const totBizRow= coreBiz.find(r=>/total/i.test(r[0]));
-  const junIdx   = rovCols.findIndex(c=>/jun/i.test(c));
-  const mayIdx   = rovCols.findIndex(c=>/may/i.test(c));
+  const junIdx   = rovCols.findIndex(c=>/\bjun/i.test(c));
+  const mayIdx   = rovCols.findIndex(c=>/\bmay\b/i.test(c));
   function rovVal(row){ if(!row) return null; if(junIdx>=0&&rovIdx[junIdx]!=null) return pN(row[rovIdx[junIdx]]); const nums=row.slice(1).map(pN).filter(v=>v!==null); if(nums.length>=2&&nums[nums.length-1]>nums[nums.length-2]*3) return nums[nums.length-2]; return nums[nums.length-1]??null; }
   const smJunV   = rovVal(smRow);
-  const rstJunV  = rovVal(rstRow);
-  const totJunV  = rovVal(totBizRow)||(smJunV&&rstJunV?smJunV+rstJunV:null);
+  const rstJunVraw= rovVal(rstRow);
+  const totJunV  = rovVal(totBizRow)||(smJunV&&rstJunVraw?smJunV+rstJunVraw:null);
+  // Auto-correct 10× restaurant data entry error: if rst > sm × 3, derive as Total − SM
+  const rstJunV  = (rstJunVraw&&smJunV&&rstJunVraw>smJunV*3&&totJunV)?(totJunV-smJunV):rstJunVraw;
   const smPct    = totJunV&&smJunV?(smJunV/totJunV*100).toFixed(1):null;
   const rstPct   = totJunV&&rstJunV?(rstJunV/totJunV*100).toFixed(1):null;
 
@@ -4330,7 +4342,7 @@ window.presentReport = async function() {
   for(const r of areaRaw){ if(!r?.[0]&&!r?.[1]) continue; if(/^(area leader|leader|outlet|june 2026|performance)$/i.test((r[0]||'').trim())) continue; if(!r[1]||r.length<4) continue; areaRows.push({leader:r[0]||'',outlet:r[1],target:r[2],actual:r[3],diff:r[4],pct:r[5],isTotal:/total/i.test(r[1])}); }
 
   const catYTD   = data.categorySalesYTD||[];
-  const catYHdr  = catYTD.find(r=>r?.slice(1).some(c=>/jan|feb|mar/i.test(String(c))));
+  const catYHdr  = catYTD.find(r=>r?.slice(1).some(c=>mRe.test(String(c))));
   const catYCols = catYHdr?catYHdr.slice(1).filter(Boolean):[];
   const catYRows = catYTD.filter(r=>r?.[0]&&!/dept|category|sales/i.test(r[0])&&r.length>=2);
 
