@@ -4921,7 +4921,10 @@ Rules: use the real numbers from the data. Name real outlets and categories. No 
       if(typeof c==='object'&&c?.style&&/center/.test(c.style)) return 'center';
       return 'center';
     });
-    return `<div class="ps-tbl-wrap${compact?' ps-compact':''}"><table class="ps-tbl"><thead><tr>${headers.map((h,i)=>`<th style="background:${hbg};text-align:${hAligns[i]}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,ri)=>`<tr class="${ri%2===1?'ps-alt':''}">${r.map(c=>{ const isObj=typeof c==='object'&&c!==null; const txt=isObj?c.text:c; const sty=isObj?`style="${c.style||''}"`:''  ; return `<td ${sty}>${esc(txt)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
+    return `<div class="ps-tbl-wrap${compact?' ps-compact':''}"><table class="ps-tbl"><thead><tr>${headers.map((h,i)=>`<th style="background:${hbg};text-align:${hAligns[i]}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,ri)=>`<tr class="${ri%2===1?'ps-alt':''}">${r.map(c=>{ const isObj=typeof c==='object'&&c!==null; const sty=isObj?`style="${c.style||''}"`:'';
+      // {html:...} passes through unescaped so SVG cells (sparklines, bullets) render
+      if(isObj&&c.html!=null) return `<td ${sty}>${c.html}</td>`;
+      const txt=isObj?c.text:c; return `<td ${sty}>${esc(txt)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
   function statusCell(v){ const s=sColor(v); return {text:s.lbl,style:`color:${s.c};background:${s.bg};font-weight:700;text-align:center`}; }
   function numCell(v,col){ return {text:String(v||'—'),style:`text-align:right${col?`;color:${col}`:''}` }; }
@@ -4945,6 +4948,110 @@ Rules: use the real numbers from the data. Name real outlets and categories. No 
         <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;background:#ea580c;border-radius:3px;flex-shrink:0;display:inline-block"></span><strong style="color:#ea580c">Restaurant</strong> &nbsp;${rst.toFixed(1)}%</div>
       </div>
     </div>`;
+  }
+
+  // ── SVG chart set ─────────────────────────────────────────────────────────
+  // Hand-rolled rather than a charting library: these inherit the active theme
+  // through T, carry no dependency, stay sharp at projector resolution, and the
+  // shapes map cleanly onto the PPTX export.
+
+  // Revenue bridge. Shows how the month moved: opening bar, each contribution
+  // as a floating step, closing bar. The classic "where did it go" exec chart.
+  function svgWaterfall(steps,{w=560,h=260,unit='M'}={}){
+    if(!steps?.length) return '<div class="ps-no-data">Not enough data for a bridge</div>';
+    // Running cumulative so each delta floats at the right height
+    let run=0; const laid=steps.map(s=>{
+      if(s.type==='total'){ const o={...s,base:0,top:s.value}; run=s.value; return o; }
+      const base=run, top=run+s.value; run=top; return {...s,base,top};
+    });
+    const lo=Math.min(0,...laid.map(s=>Math.min(s.base,s.top)));
+    const hi=Math.max(...laid.map(s=>Math.max(s.base,s.top)));
+    const pad={t:26,b:44,l:8,r:8};
+    const plotH=h-pad.t-pad.b, span=(hi-lo)||1;
+    const y=v=>pad.t+plotH-((v-lo)/span)*plotH;
+    const bw=(w-pad.l-pad.r)/laid.length, barW=Math.min(64,bw*0.56);
+    const fmt=v=>`${v>=0?'+':'−'}${Math.abs(Math.round(v)).toLocaleString()}`;
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" role="img">
+      <line x1="${pad.l}" y1="${y(0)}" x2="${w-pad.r}" y2="${y(0)}" stroke="#D1D5DB" stroke-width="1"/>
+      ${laid.map((s,i)=>{
+        const cx=pad.l+bw*i+bw/2, x=cx-barW/2;
+        const yTop=Math.min(y(s.base),y(s.top)), hgt=Math.max(2,Math.abs(y(s.top)-y(s.base)));
+        const fill=s.type==='total'?T.brand:(s.value>=0?'#16a34a':'#E11D48');
+        const conn=i<laid.length-1?`<line x1="${cx+barW/2}" y1="${y(s.top)}" x2="${pad.l+bw*(i+1)+bw/2-barW/2}" y2="${y(s.top)}" stroke="#9CA3AF" stroke-width="1" stroke-dasharray="3 2"/>`:'';
+        const lbl=s.type==='total'?Math.round(s.value).toLocaleString():fmt(s.value);
+        return `${conn}<rect x="${x}" y="${yTop}" width="${barW}" height="${hgt}" fill="${fill}" rx="2"/>
+          <text x="${cx}" y="${yTop-6}" text-anchor="middle" font-size="11" font-weight="700" fill="${fill}">${esc(lbl)}</text>
+          <text x="${cx}" y="${h-pad.b+16}" text-anchor="middle" font-size="10" fill="#6B7280">${esc(s.label)}</text>`;
+      }).join('')}
+      <text x="${w-pad.r}" y="${h-6}" text-anchor="end" font-size="9" fill="#9CA3AF">Naira ${unit}</text>
+    </svg>`;
+  }
+
+  // Actual vs target in a single row. Denser and more honest than a percentage
+  // in a table cell, because the gap to target is visible as distance.
+  function svgBullet(actual,target,{w=240,h=22,label=''}={}){
+    const a=pN(actual)||0, t=pN(target)||0;
+    const max=Math.max(a,t)*1.1||1;
+    const pct=t?a/t*100:null;
+    const col=pct==null?'#6B7280':pct>=100?'#16a34a':pct>=90?'#15803d':pct>=80?'#D97706':'#E11D48';
+    const bw=v=>Math.max(0,Math.min(w,(v/max)*w));
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img"${label?` aria-label="${esc(label)}"`:''}>
+      <rect x="0" y="${h/2-7}" width="${w}" height="14" fill="#F3F4F6" rx="2"/>
+      <rect x="0" y="${h/2-7}" width="${bw(t*0.8)}" height="14" fill="#E5E7EB" rx="2"/>
+      <rect x="0" y="${h/2-4}" width="${bw(a)}" height="8" fill="${col}" rx="1.5"/>
+      <line x1="${bw(t)}" y1="${h/2-9}" x2="${bw(t)}" y2="${h/2+9}" stroke="#111827" stroke-width="2"/>
+    </svg>`;
+  }
+
+  // Outlet × month grid. Twenty outlets over six months is unreadable as a
+  // table but reads instantly as a field of colour.
+  function svgHeatmap(rowLabels,colLabels,matrix,{cell=26,labelW=104}={}){
+    if(!rowLabels?.length||!colLabels?.length) return '<div class="ps-no-data">Not enough data for a heatmap</div>';
+    const w=labelW+colLabels.length*cell, h=20+rowLabels.length*cell;
+    const shade=v=>{
+      if(v==null) return '#F3F4F6';
+      if(v>=100) return '#15803d'; if(v>=95) return '#22c55e'; if(v>=90) return '#86efac';
+      if(v>=85) return '#fde68a'; if(v>=80) return '#fbbf24'; if(v>=70) return '#fb923c';
+      return '#ef4444';
+    };
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="xMinYMin meet" role="img">
+      ${colLabels.map((c,j)=>`<text x="${labelW+j*cell+cell/2}" y="13" text-anchor="middle" font-size="9.5" font-weight="700" fill="#6B7280">${esc(c)}</text>`).join('')}
+      ${rowLabels.map((r,i)=>`
+        <text x="${labelW-7}" y="${20+i*cell+cell/2+3.5}" text-anchor="end" font-size="10" fill="#374151">${esc(String(r).slice(0,16))}</text>
+        ${colLabels.map((_,j)=>{ const v=matrix[i]?.[j];
+          return `<rect x="${labelW+j*cell}" y="${20+i*cell}" width="${cell-2}" height="${cell-2}" fill="${shade(v)}" rx="2"/>
+            <text x="${labelW+j*cell+(cell-2)/2}" y="${20+i*cell+cell/2+3}" text-anchor="middle" font-size="8.5" font-weight="700" fill="${v!=null&&v<90&&v>=80?'#78350f':v!=null&&v>=95?'#fff':v!=null&&v<80?'#fff':'#374151'}">${v!=null?Math.round(v):''}</text>`;
+        }).join('')}`).join('')}
+    </svg>`;
+  }
+
+  // Inline trend for a table row — six months of shape in the width of a cell.
+  function svgSparkline(vals,{w=76,h=20}={}){
+    const v=(vals||[]).filter(x=>x!=null);
+    if(v.length<2) return '';
+    const lo=Math.min(...v), hi=Math.max(...v), span=(hi-lo)||1;
+    const x=i=>(i/(v.length-1))*(w-4)+2, y=n=>h-2-((n-lo)/span)*(h-6);
+    const pts=v.map((n,i)=>`${x(i).toFixed(1)},${y(n).toFixed(1)}`).join(' ');
+    const up=v[v.length-1]>=v[0], col=up?'#16a34a':'#E11D48';
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img">
+      <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${x(v.length-1).toFixed(1)}" cy="${y(v[v.length-1]).toFixed(1)}" r="2.4" fill="${col}"/>
+    </svg>`;
+  }
+
+  // Radial gauge for a single headline percentage.
+  function svgGauge(pct,{size=150,label=''}={}){
+    const p=pN(pct); const v=Math.max(0,Math.min(100,p??0));
+    const col=p==null?'#6B7280':v>=100?'#16a34a':v>=90?'#15803d':v>=80?'#D97706':'#E11D48';
+    const r=52, cx=size/2, cy=size/2+8, circ=Math.PI*r; // semicircle
+    const arc=(circ*v/100).toFixed(1);
+    return `<svg viewBox="0 0 ${size} ${size*0.78}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" role="img">
+      <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="#E5E7EB" stroke-width="13" stroke-linecap="round"/>
+      <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="${col}" stroke-width="13"
+        stroke-linecap="round" stroke-dasharray="${arc} ${circ}"/>
+      <text x="${cx}" y="${cy-8}" text-anchor="middle" font-size="30" font-weight="900" fill="${col}">${p!=null?v.toFixed(1)+'%':'—'}</text>
+      ${label?`<text x="${cx}" y="${cy+13}" text-anchor="middle" font-size="10" fill="#6B7280">${esc(label)}</text>`:''}
+    </svg>`;
   }
 
   // ── Bar chart (CSS-based) — value label floats above each bar ────────────
@@ -5089,6 +5196,42 @@ Rules: use the real numbers from the data. Name real outlets and categories. No 
     </div>
   </div>`);
 
+  // Slide 4b: Revenue bridge — how the month actually moved, line by line
+  const bridgeSteps = (()=>{
+    if(mayIdx<0||junIdx<0||!rovIdx[mayIdx]||!rovIdx[junIdx]) return [];
+    const prevOf=r=>pN(r[rovIdx[mayIdx]]), curOf=r=>pN(r[rovIdx[junIdx]]);
+    const prevTot=totBizRow?prevOf(totBizRow):null;
+    if(prevTot==null) return [];
+    // Supermarket and Restaurant move, then each other line's contribution
+    const lines=[];
+    if(smRow)  lines.push({label:'Supermkt', value:(curOf(smRow)||0)-(prevOf(smRow)||0)});
+    if(rstRow){
+      // Use the corrected figures on both sides so the 10x error doesn't distort
+      const pRaw=prevOf(rstRow), cRaw=curOf(rstRow);
+      const pTot=prevOf(totBizRow), pSm=smRow?prevOf(smRow):null;
+      const p=(pRaw&&pSm&&pRaw>pSm*3&&pTot)?(pTot-pSm):pRaw;
+      lines.push({label:'Restaurant', value:(rstJunV||0)-(p||0)});
+    }
+    const sum=lines.reduce((a,l)=>a+l.value,0);
+    const actual=(totJunV||0)-prevTot;
+    if(Math.abs(actual-sum)>1) lines.push({label:'Other', value:actual-sum});
+    return [
+      {label:MFULL[rovCols[mayIdx]]||rovCols[mayIdx], value:prevTot, type:'total'},
+      ...lines,
+      {label:MFULL[rovCols[junIdx]]||rovCols[junIdx], value:totJunV, type:'total'},
+    ];
+  })();
+  if(bridgeSteps.length>=3) SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('REVENUE',`HOW ${fullMonth.toUpperCase()} MOVED`,5,ins.core_business)}
+    <div class="ps-body">
+      <div class="ps-section-tag">REVENUE BRIDGE — ${esc(rovCols[mayIdx]||'PREV')} TO ${esc(rovCols[junIdx]||'THIS MONTH')} (MILLION)</div>
+      <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">
+        ${svgWaterfall(bridgeSteps,{w:1050,h:330})}
+      </div>
+      ${takeawayBar(ins.core_business)}
+    </div>
+  </div>`);
+
   // Slide 5: Growth
   const growKpis=[
     {lbl:`${latestRg?.[0]||''} VALUE YoY`, v:latestRg?.[3]},
@@ -5121,18 +5264,45 @@ Rules: use the real numbers from the data. Name real outlets and categories. No 
     <div class="ps-body ps-split" style="gap:16px;align-items:flex-start">
       <div class="ps-global-kpi" style="background:${sColor(globalOut?.[5]).bg};border:2px solid ${sColor(globalOut?.[5]).c}">
         <div class="ps-gkpi-label">GLOBAL ACHIEVEMENT</div>
-        <div class="ps-gkpi-val" style="color:${sColor(globalOut?.[5]).c}">${gAch!=null?gAch.toFixed(1)+'%':'—'}</div>
+        ${svgGauge(gAch,{label:'of target'})}
         <div class="ps-gkpi-status" style="color:${sColor(globalOut?.[5]).c}">${sColor(globalOut?.[5]).lbl}</div>
         ${globalOut?`<div class="ps-gkpi-detail">Target: ${fmtRaw(globalOut[1])}<br/>Actual: ${fmtRaw(globalOut[2])}</div>`:''}
       </div>
       <div style="flex:1">
-        ${(()=>{ const isSpot=spotOf(ins.outlets); return table(['OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS'],
-          [...(globalOut?[[{text:'GLOBAL',style:'font-weight:700;background:#DCFCE7'},numCell(fmtRaw(globalOut[1]),''),numCell(fmtRaw(globalOut[2]),''),numCell(fmtRaw(globalOut[4]),''),pctCell(globalOut[5]),statusCell(globalOut[5])]]:[]),
-          ...outRows.slice(0,16).map(r=>[ spotLabel(r[0],isSpot(r[0])), numCell(fmtRaw(r[1]),''), numCell(fmtRaw(r[2]),''), numCell(fmtRaw(r[4]),''), pctCell(r[5]), statusCell(r[5]) ]),
+        ${(()=>{ const isSpot=spotOf(ins.outlets);
+          const bullet=r=>({html:svgBullet(r[2],r[1],{w:150,h:20,label:String(r[0])}),style:'text-align:left;padding-right:0'});
+          return table(['OUTLET','TARGET','ACTUAL','VS TARGET','ACH%','STATUS'],
+          [...(globalOut?[[{text:'GLOBAL',style:'font-weight:700;background:#DCFCE7'},numCell(fmtRaw(globalOut[1]),''),numCell(fmtRaw(globalOut[2]),''),bullet(globalOut),pctCell(globalOut[5]),statusCell(globalOut[5])]]:[]),
+          ...outRows.slice(0,16).map(r=>[ spotLabel(r[0],isSpot(r[0])), numCell(fmtRaw(r[1]),''), numCell(fmtRaw(r[2]),''), bullet(r), pctCell(r[5]), statusCell(r[5]) ]),
         ], false, true); })()}
       </div>
     </div>
     ${takeawayBar(ins.outlets)}
+  </div>`);
+
+  // Slide 6b: Achievement heatmap — 20 outlets at a glance, which a table cannot do
+  const hmRows = outRows.slice(0,18).map(r=>String(r[0]||'').trim()).filter(Boolean);
+  const hmVals = outRows.slice(0,18).map(r=>[normPct(r[5])]);
+  if(hmRows.length>=6) SLIDES.push(`<div class="ps-slide">
+    ${slideHeader('OUTLETS','OUTLET ACHIEVEMENT AT A GLANCE',7,ins.outlets)}
+    <div class="ps-body">
+      <div class="ps-section-tag">${esc(fullMonth.toUpperCase())} ACHIEVEMENT % — DARKER GREEN IS AHEAD OF TARGET, RED IS BEHIND</div>
+      <div class="ps-split" style="flex:1;min-height:0;gap:26px">
+        <div style="flex:1;min-height:0;overflow:hidden">
+          ${svgHeatmap(hmRows.slice(0,9),[fullMonth.slice(0,3).toUpperCase()],hmVals.slice(0,9),{cell:30,labelW:120})}
+        </div>
+        <div style="flex:1;min-height:0;overflow:hidden">
+          ${svgHeatmap(hmRows.slice(9),[fullMonth.slice(0,3).toUpperCase()],hmVals.slice(9),{cell:30,labelW:120})}
+        </div>
+        <div style="width:220px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center;gap:9px">
+          ${[['≥100','#15803d','On or above target'],['90–99','#86efac','Close to target'],['80–89','#fbbf24','Behind'],['70–79','#fb923c','Well behind'],['<70','#ef4444','Critical']]
+            .map(([r,c,d])=>`<div style="display:flex;align-items:center;gap:9px;font-size:0.8em">
+              <span style="width:17px;height:17px;background:${c};border-radius:3px;flex-shrink:0;display:inline-block"></span>
+              <strong style="min-width:44px">${r}</strong><span style="color:#6B7280">${d}</span></div>`).join('')}
+        </div>
+      </div>
+      ${takeawayBar(ins.outlets)}
+    </div>
   </div>`);
 
   // Slide 7: Regional Performance
