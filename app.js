@@ -4345,6 +4345,54 @@ window.presentReport = async function() {
   function yoyFmt(v){ const n=pN(v); return n!=null?`${n>=0?'+':''}${n.toFixed(1)}%`:'—'; }
   function yoyColor(v){ const n=pN(v); return n!=null?(n>=0?'#166534':'#DC2626'):'#6B7280'; }
 
+  // ── Value normalizers ──────────────────────────────────────────────────────
+  // Sheets return whatever the cell *displays*, so the same month can arrive as
+  // "JUNE", "Jun-26", "6/26/2026" or "JUN 2026 (M)". These turn any of those
+  // into one canonical form, so no parser downstream has to guess at formats.
+  const MON3=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  function monthOf(v){
+    const s=String(v??'').trim();
+    if(!s) return null;
+    // Aggregate/derived columns are not months
+    if(/ytd|total|budget|target|diff|qty|achiev|store/i.test(s)) return null;
+    let m;
+    if((m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/))) return MON3[+m[1]-1]||null; // 6/26/2026
+    if((m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)))                return MON3[+m[2]-1]||null; // 2026-06-26
+    if((m=s.match(/^([A-Za-z]{3})[A-Za-z]*/))){                                                // JUNE / Jun-26
+      const i=MON3.indexOf(m[1].toUpperCase());
+      if(i>=0) return MON3[i];
+    }
+    return null;
+  }
+  // Finds the row that reads most like a month header, by counting how many of
+  // its cells resolve to a month — structural, not a guess about which row it is.
+  function findMonthHeader(rows,minCols=2){
+    let best=null,bestN=0;
+    (rows||[]).forEach(r=>{
+      const n=(r||[]).filter(monthOf).length;
+      if(n>bestN){bestN=n;best=r;}
+    });
+    return bestN>=minCols?best:null;
+  }
+  // Returns [{label,idx}] for every month column in a header row
+  function monthCols(hdr){
+    if(!hdr) return [];
+    const out=[];
+    hdr.forEach((c,i)=>{ const m=monthOf(c); if(m) out.push({label:m,idx:i}); });
+    return out;
+  }
+  // Stock/availability arrives as either 0.79 or 79 — normalize to percent.
+  function asPct(v){ const n=pN(v); if(n===null) return null; return n<=1.5?n*100:n; }
+  // Index of the first column whose cell is a non-empty label, so a sheet with a
+  // leading blank column parses the same as one without.
+  function labelCol(rows){
+    for(let c=0;c<4;c++){
+      const filled=(rows||[]).filter(r=>String(r?.[c]??'').trim()).length;
+      if(filled>=Math.max(2,(rows||[]).length*0.4)) return c;
+    }
+    return 0;
+  }
+
   // ── Data parsing ──────────────────────────────────────────────────────────
   const ytdAll   = (data.businessYTD||[]).filter(r=>r?.[0]);
   const ytdMonths= ytdAll.filter(r=>!['MONTH','YTD','TOTAL'].includes((r[0]||'').toUpperCase()));
@@ -4369,14 +4417,15 @@ window.presentReport = async function() {
   const rov      = data.revenueOverview||[];
   // Start-of-string month match: "APR","JUNE","Jun-26" all match; "SUPERMARKET" does NOT (starts with S)
   // Exclude YTD/total columns so "JUNE YTD" isn't treated as a data month
-  const mRe      = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
-  const mColRe   = c => mRe.test(String(c)) && !/ytd|total|budget|target/i.test(String(c));
-  // Also used to detect/skip header-like rows in section parsers
-  const isHdrRow = r => mRe.test(String(r?.[0]||'')) || /^business$/i.test(String(r?.[0]||'').trim());
-  let rovHdr     = rov.find(r=>r?.slice(1).some(c=>mColRe(c)));
-  if(!rovHdr) rovHdr = rov.find(r=>r?.some(c=>mColRe(c)));
-  const rovCols  = rovHdr?rovHdr.filter(c=>c&&mColRe(c)):[];
-  const rovIdx   = rovHdr?rovCols.map(c=>rovHdr.indexOf(c)):[];
+  // Headers here are date-formatted ("6/26/2026"), not month names — monthOf()
+  // resolves either form, so this no longer depends on how the sheet is styled.
+  const mColRe   = c => monthOf(c) != null;
+  const rovHdr   = findMonthHeader(rov);
+  const rovMC    = monthCols(rovHdr);
+  const rovCols  = rovMC.map(c=>c.label);
+  const rovIdx   = rovMC.map(c=>c.idx);
+  // A row is a column header if several of its cells resolve to months
+  const isHdrRow = r => (r||[]).filter(monthOf).length>=2;
   let coreBiz=[],otherBiz=[],inC=false,inO=false;
   for(const r of rov){
     if(!r?.[0]) continue;
@@ -4389,8 +4438,9 @@ window.presentReport = async function() {
   const smRow    = coreBiz.find(r=>/supermarket|sm\b/i.test(r[0]));
   const rstRow   = coreBiz.find(r=>/restaurant|rst\b/i.test(r[0]));
   const totBizRow= coreBiz.find(r=>/total/i.test(r[0]));
-  const junIdx   = rovCols.findIndex(c=>/^jun/i.test(String(c)));
-  const mayIdx   = rovCols.findIndex(c=>/^may/i.test(String(c)));
+  // Latest month = the reporting month if present, else the last column
+  const junIdx   = rovCols.indexOf(mLabel)>=0 ? rovCols.indexOf(mLabel) : rovCols.length-1;
+  const mayIdx   = junIdx-1;
   function rovVal(row){ if(!row) return null; if(junIdx>=0&&rovIdx[junIdx]!=null) return pN(row[rovIdx[junIdx]]); const nums=row.slice(1).map(pN).filter(v=>v!==null); if(nums.length>=2&&nums[nums.length-1]>nums[nums.length-2]*3) return nums[nums.length-2]; return nums[nums.length-1]??null; }
   const smJunV   = rovVal(smRow);
   const rstJunVraw= rovVal(rstRow);
@@ -4422,16 +4472,51 @@ window.presentReport = async function() {
   const catYCols = catYHdr?catYHdr.slice(1).filter(Boolean):[];
   const catYRows = catYTD.filter(r=>r?.[0]&&!/dept|category|sales/i.test(r[0])&&r.length>=2);
 
+  // This sheet has a leading blank column, so the label lives in col 1 not col 0.
+  // labelCol() finds it by density instead of assuming a position.
   const catLat   = data.categorySalesLatest||[];
-  const catLHdr  = catLat.find(r=>/dept|category/i.test(r[0])||r?.slice(1).some(c=>/may|jun|sales/i.test(String(c))));
-  const catLCols = catLHdr?catLHdr.slice(1).filter(Boolean):[];
-  const catLRows = catLat.filter(r=>r?.[0]&&!/dept|category/i.test(r[0])&&r.length>=3);
+  const catLLC   = labelCol(catLat);
+  const catLHdrI = catLat.findIndex(r=>/dept|category/i.test(String(r?.[catLLC]||'')));
+  const catLHdr  = catLHdrI>=0?catLat[catLHdrI]:null;
+  const catLCols = catLHdr?catLHdr.slice(catLLC+1).filter(Boolean):[];
+  const catLRows = catLat
+    .slice(catLHdrI>=0?catLHdrI+1:0)
+    .filter(r=>String(r?.[catLLC]||'').trim() && !/dept|category|global/i.test(String(r[catLLC])))
+    .map(r=>r.slice(catLLC));          // re-base so downstream can treat col 0 as the label
+  const catLGlobal = catLat.find(r=>/global/i.test(String(r?.[catLLC]||'')))?.slice(catLLC);
+
+  // CATEGORY PERFORMANCE repeats a block per month. Take the last block, since
+  // that sheet can lag the reporting month (it may still be on the prior month).
+  const cperfRaw = data.categoryPerf||[];
+  const cpHdrIs  = cperfRaw.map((r,i)=>/^category$/i.test(String(r?.[0]||'').trim())?i:-1).filter(i=>i>=0);
+  const cpHdrI   = cpHdrIs.length?cpHdrIs[cpHdrIs.length-1]:-1;
+  const cpHdr    = cpHdrI>=0?cperfRaw[cpHdrI]:null;
+  const cpMonth  = cpHdr?(monthOf(cpHdr[2])||monthOf(cpHdr[1])):null;
+  const cpRows   = (()=>{
+    if(cpHdrI<0) return [];
+    const out=[];
+    for(let i=cpHdrI+1;i<cperfRaw.length;i++){
+      const r=cperfRaw[i];
+      if(!r||!String(r[0]||'').trim()) { if(out.length) break; continue; }
+      if(/^category$/i.test(String(r[0]).trim())) break;
+      out.push({ name:String(r[0]), prev:pN(r[1]), cur:pN(r[2]), vly:pN(r[3]), ach:pN(r[4]), onTarget:pN(r[5]), stores:String(r[6]||'') });
+    }
+    return out;
+  })();
 
   const yoy      = data.yoy||[];
-  const smI      = yoy.findIndex(r=>r?.some(c=>/sm.*3f|sm\+3f/i.test(String(c))));
-  const yoySec   = smI>=0?yoy.slice(smI):yoy;
-  const yoyRows  = yoySec.filter(r=>{ if(!r?.[0]) return false; if(/outlet|store|total|same.store|supermarket|restaurant|sm\+3f/i.test(r[0])) return false; return r.length>=4; });
-  const yoyHdrR  = yoy.find(r=>r?.some(c=>/2025|prev/i.test(String(c))));
+  // The sheet stacks sections (SUPERMARKET, RESTAURANT, SM+3F). Prefer the
+  // combined section when present, else fall back to the first section, and
+  // always stop at the next section banner so rows never bleed across.
+  const yoySecIs = yoy.map((r,i)=>{
+    const banner=(r||[]).find(c=>/^(supermarket|restaurant|sm\s*\+?\s*3f|combined|total business)$/i.test(String(c||'').trim()));
+    return banner?{i,name:String(banner).trim().toUpperCase()}:null;
+  }).filter(Boolean);
+  const yoyPick  = yoySecIs.find(s=>/3f|combined|total business/i.test(s.name)) || yoySecIs[0] || null;
+  const yoyEnd   = yoyPick ? (yoySecIs.find(s=>s.i>yoyPick.i)?.i ?? yoy.length) : yoy.length;
+  const yoySec   = yoyPick ? yoy.slice(yoyPick.i, yoyEnd) : yoy;
+  const yoyRows  = yoySec.filter(r=>{ if(!r?.[0]) return false; if(/^(outlet|store|total|same.store|supermarket|restaurant|sm\s*\+?\s*3f)$/i.test(String(r[0]).trim())) return false; return r.length>=4; });
+  const yoyHdrR  = yoySec.find(r=>r?.some(c=>/2025|prev/i.test(String(c)))) || yoy.find(r=>r?.some(c=>/2025|prev/i.test(String(c))));
   const y25VI    = yoyHdrR?yoyHdrR.findIndex(c=>/2025.*val|val.*2025/i.test(String(c))):2;
   const y26VI    = yoyHdrR?yoyHdrR.findIndex(c=>/2026.*val|val.*2026/i.test(String(c))):4;
   const yPctI    = yoyHdrR?yoyHdrR.findIndex(c=>/%\s*val|val.*%/i.test(String(c))):-1;
@@ -4461,10 +4546,32 @@ window.presentReport = async function() {
   const wkIsFull = wkDays.map(d=>d>=5);
   const peakWkI  = wkSales.reduce((mi,v,i)=>v!=null&&(mi<0||v>wkSales[mi])?i:mi,-1);
   const weakWkI  = wkSales.reduce((mi,v,i)=>wkIsFull[i]&&v!=null&&(mi<0||v<wkSales[mi])?i:mi,-1);
-  function getStockRows(si){ if(si<0) return []; const rows=[]; for(let i=si+1;i<ws.length;i++){ const r=ws[i]; if(!r) break; if(r[0]&&String(r[0]).trim()&&!/diamond|silver/i.test(String(r[0]))) break; if(r[1]&&String(r[1]).trim()) rows.push({cat:String(r[1]),vals:WK_COLS.map(ci=>{const v=parseFloat(String(r[ci]||'').replace('%','')); return isNaN(v)?null:v;})}); } return rows; }
-  const wsDiamond= getStockRows(wsDiamI);
-  const wsSilver = getStockRows(wsSilvI);
-  function wsAvg(vals){ const v=vals.filter(x=>x!=null); return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; }
+  // Stock rows only carry 4 weeks; the final column is the sheet's own average.
+  // Weekly cells are fractions (0.79) while the average is already a percent (81),
+  // so asPct() normalizes both to the same scale.
+  const STOCK_COLS = [2,3,4,5];
+  const STOCK_AVG_COL = 6;
+  function getStockRows(si,stopAt){
+    if(si<0) return [];
+    const rows=[];
+    for(let i=si+1;i<ws.length;i++){
+      if(stopAt>si && i>=stopAt) break;          // never run into the next section
+      const r=ws[i];
+      if(!r) break;
+      if(String(r[0]||'').trim()) break;          // a new section label ends this one
+      if(String(r[1]||'').trim()) rows.push({
+        cat: String(r[1]),
+        vals: STOCK_COLS.map(ci=>asPct(r[ci])),
+        sheetAvg: asPct(r[STOCK_AVG_COL]),
+      });
+    }
+    return rows;
+  }
+  const wsDiamond= getStockRows(wsDiamI, wsSilvI);
+  const wsSilver = getStockRows(wsSilvI, ws.length);
+  const wkStockLabels = wkLabels.slice(0,STOCK_COLS.length);
+  // Prefer the sheet's own average; fall back to computing it
+  function wsAvg(vals,sheetAvg){ if(sheetAvg!=null) return sheetAvg; const v=(vals||[]).filter(x=>x!=null); return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; }
 
   // ── Next month label ───────────────────────────────────────────────────────
   const ALL_MONTHS=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -4959,11 +5066,26 @@ Rules: use the real numbers from the data. Name real outlets and categories. No 
   });
 
   // Slide 9: Top 5 Stores (static fallback — TopStores sheet structure varies)
+  // Layout: a month label sits above each 3-column group (Outlet, Revenue, ADS).
+  // There are no rank numbers in the sheet — rank IS the row's position, so the
+  // rows are taken as the block between the sub-header and the "Top 5" total.
   const topStores=data.topStores||[];
-  const tsHdrI=topStores.findIndex(r=>r?.some(c=>/jan|feb|mar/i.test(String(c))));
+  const tsHdrI=topStores.findIndex(r=>(r||[]).filter(monthOf).length>=2);
   const tsMH=tsHdrI>=0?topStores[tsHdrI]:[];
-  const tsRanks=topStores.filter(r=>r?.[0]&&/^#?\d+$/i.test(String(r[0]).trim())).slice(0,5);
-  const tsMths=[{l:'JAN'},{l:'FEB'},{l:'MAR'},{l:'APR'},{l:'MAY'},{l:'JUN'}].map(m=>{const i=tsMH.findIndex(c=>new RegExp(m.l,'i').test(String(c)));return{...m,ni:i,vi:i+1};}).filter(m=>m.ni>=0);
+  const tsSubI=topStores.findIndex((r,i)=>i>tsHdrI&&/outlet/i.test(String(r?.[0]||'')));
+  const tsMths=monthCols(tsMH).map(m=>({l:m.label,ni:m.idx,vi:m.idx+1}));
+  const tsRanks=(()=>{
+    if(tsSubI<0) return [];
+    const out=[];
+    for(let i=tsSubI+1;i<topStores.length;i++){
+      const r=topStores[i];
+      if(!r||!String(r[0]||'').trim()) break;      // blank row ends the block
+      if(/top\s*\d|total/i.test(String(r[0]))) break;
+      out.push(r);
+      if(out.length>=5) break;
+    }
+    return out;
+  })();
   SLIDES.push(`<div class="ps-slide">
     ${slideHeader('OUTLETS',`TOP 5 STORES — ${fullMonth.toUpperCase()} PERFORMANCE`,9,ins.outlets)}
     <div class="ps-body">
@@ -4971,7 +5093,10 @@ Rules: use the real numbers from the data. Name real outlets and categories. No 
         ['RANK',...tsMths.map(m=>m.l)],
         tsRanks.map((r,ri)=>[ {text:`#${ri+1}`,style:'font-weight:700;color:#ea580c;text-align:center'}, ...tsMths.map(m=>({text:`${m.ni>=0&&r[m.ni]?r[m.ni]:''} ${m.vi>=0&&r[m.vi]?fmtRaw(r[m.vi]):''}`.trim()||'—',style:'text-align:center;font-size:0.82em'})) ])
       ):`<p class="ps-no-data">Top stores data not available in current sheet</p>`}
-      ${tsRanks.length&&tsMths.some(m=>/jun/i.test(m.l))?`<div class="ps-insight-banner" style="margin-top:12px"><strong>JUNE TOP STORES: </strong>${tsRanks.slice(0,5).map((r,i)=>{ const jm=tsMths.find(m=>/jun/i.test(m.l)); return jm&&r[jm.ni]?`#${i+1} ${r[jm.ni]} (${fmtRaw(r[jm.vi])})`:''}).filter(Boolean).join('  ·  ')}</div>`:''}
+      ${(()=>{ const jm=tsMths.find(m=>m.l===mLabel)||tsMths[tsMths.length-1];
+        if(!tsRanks.length||!jm) return '';
+        const list=tsRanks.slice(0,5).map((r,i)=>r[jm.ni]?`#${i+1} ${r[jm.ni]} (${fmtRaw(r[jm.vi])})`:'').filter(Boolean).join('  ·  ');
+        return list?`<div class="ps-insight-banner" style="margin-top:12px"><strong>${esc(MFULL[jm.l]||jm.l)} TOP STORES: </strong>${list}</div>`:''; })()}
     </div>
   </div>`);
 
@@ -5003,23 +5128,22 @@ Rules: use the real numbers from the data. Name real outlets and categories. No 
 
   // Slide 12: Category Achievement Trends
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('CATEGORY','CATEGORY ACHIEVEMENT TRENDS',12)}
+    ${slideHeader('CATEGORY','CATEGORY ACHIEVEMENT TRENDS',12,ins.category_month)}
     <div class="ps-body">
-      ${sLabel('JUNE CATEGORY STATUS & KEY OBSERVATIONS')}
-      ${catLRows.length?table(
-        ['DEPARTMENT',...catLCols,'STATUS','OBSERVATION'],
-        catLRows.map(r=>{ const isG=/global|total/i.test(r[0]);
-          const achI=catLCols.findIndex(c=>/%/i.test(String(c)));
-          const achV=achI>=0?r[achI+1]:null;
-          const obs={'household':'Lowest — seasonal dip post-Ileya','fresh food':'Sharp decline — supply review needed','cashier':'Below 80% — manning gap','3f':'Off May peak but stable','grocery':'Largest line — needs recovery','toiletries':'Most stable — hold strategy','h&b':'Moderate decline','entertainment':'Smallest line'};
-          const obsKey=Object.keys(obs).find(k=>new RegExp(k,'i').test(r[0]))||'';
-          return [ {text:r[0],style:isG?'font-weight:700;background:#DCFCE7':''},
-            ...catLCols.map((_,j)=>{ const v=r[j+1]; const isA=catLCols[j]?.includes('%'); const n=pN(v); const col=isA&&n!=null?(n>=90?'#166534':n>=80?'#D97706':'#DC2626'):'#374151'; return {text:isA?(n!=null?`${n.toFixed(1)}%`:'—'):fmtRaw(v),style:`text-align:right;color:${col}${isG?';font-weight:700;background:#DCFCE7':''}`}; }),
-            statusCell(achV),
-            {text:isG?'All categories declined vs May':obs[obsKey]||'',style:'font-size:0.8em;color:#374151'},
-          ]; })
-      ):`<p class="ps-no-data">No data</p>`}
-      <div class="ps-insight-banner" style="background:#1E3A2A;color:#fff;margin-top:8px"><strong style="color:#ea580c">KEY CONCERN: </strong>Household weakest (68%). Fresh Food and Cashier need urgent intervention. Only Toiletries above 80%.</div>
+      ${sLabel(`${fullMonth.toUpperCase()} CATEGORY STATUS & TARGET ACHIEVEMENT`)}
+      ${catLRows.length?(()=>{ const isSpot=spotOf(ins.category_month);
+        const achI=catLCols.findIndex(c=>/%/i.test(String(c)));
+        return table(
+          ['DEPARTMENT',...catLCols,'STATUS'],
+          [...catLRows,...(catLGlobal?[catLGlobal]:[])].map(r=>{ const isG=/global|total/i.test(String(r[0]));
+            const achV=achI>=0?r[achI+1]:null;
+            return [ isG?{text:String(r[0]),style:'font-weight:700;background:#DCFCE7'}:spotLabel(String(r[0]),isSpot(r[0])),
+              ...catLCols.map((_,j)=>{ const v=r[j+1]; const isA=String(catLCols[j]||'').includes('%'); const n=pN(v); const col=isA&&n!=null?(n>=90?'#166534':n>=80?'#D97706':'#DC2626'):'#374151'; return {text:isA?(n!=null?`${n.toFixed(1)}%`:'—'):fmtRaw(v),style:`text-align:right;color:${col}${isG?';font-weight:700;background:#DCFCE7':''}`}; }),
+              statusCell(achV),
+            ]; })
+        ); })()
+      :`<p class="ps-no-data">Category status data not detected</p>`}
+      ${takeawayBar(ins.category_month)}
     </div>
   </div>`);
 
@@ -5047,17 +5171,18 @@ Rules: use the real numbers from the data. Name real outlets and categories. No 
         <div style="flex:1;overflow:hidden">
           ${wsDiamond.length?`
             <div class="ps-section-tag">DIAMOND LINES STOCK AVAILABILITY %</div>
-            ${table(['CATEGORY',...wkLabels,'AVG'],wsDiamond.map(row=>[row.cat,...row.vals.map(v=>({text:v!=null?`${Math.round(v)}%`:'—',style:`text-align:center;font-weight:700;color:${stockColor(v)}`})),{text:(a=>a!=null?`${Math.round(a)}%`:'—')(wsAvg(row.vals)),style:'text-align:center;font-weight:700;background:#F0FDF4'}]))}
+            ${table(['CATEGORY',...wkStockLabels,'AVG'],wsDiamond.map(row=>[row.cat,...row.vals.map(v=>({text:v!=null?`${Math.round(v)}%`:'—',style:`text-align:center;font-weight:700;color:${stockColor(v)}`})),{text:(a=>a!=null?`${Math.round(a)}%`:'—')(wsAvg(row.vals,row.sheetAvg)),style:'text-align:center;font-weight:700;background:#F0FDF4'}]))}
           `:'<p class="ps-no-data">Diamond Lines data not detected</p>'}
         </div>
         <div style="flex:1;overflow:hidden">
           ${wsSilver.length?`
             <div class="ps-section-tag" style="color:#ea580c">SILVER LINES STOCK AVAILABILITY %</div>
-            ${table(['CATEGORY',...wkLabels,'AVG'],wsSilver.map(row=>[row.cat,...row.vals.map(v=>({text:v!=null?`${Math.round(v)}%`:'—',style:`text-align:center;font-weight:700;color:${stockColor(v)}`})),{text:(a=>a!=null?`${Math.round(a)}%`:'—')(wsAvg(row.vals)),style:'text-align:center;font-weight:700;background:#FFF7ED'}]),true)}
+            ${table(['CATEGORY',...wkStockLabels,'AVG'],wsSilver.map(row=>[row.cat,...row.vals.map(v=>({text:v!=null?`${Math.round(v)}%`:'—',style:`text-align:center;font-weight:700;color:${stockColor(v)}`})),{text:(a=>a!=null?`${Math.round(a)}%`:'—')(wsAvg(row.vals,row.sheetAvg)),style:'text-align:center;font-weight:700;background:#FFF7ED'}]),true)}
           `:'<p class="ps-no-data">Silver Lines data not detected</p>'}
         </div>
       </div>
-      ${weakWkI>=0?`<div class="ps-insight-banner">${wkLabels[weakWkI]} was the weakest full week at N${Math.round(wkSales[weakWkI])}M. ${(()=>{const sfmx=wsSilver.reduce((mx,r)=>{const a=wsAvg(r.vals);return a!=null&&a>mx.a?{cat:r.cat,a}:mx;},{cat:'',a:-1});const sdmn=wsDiamond.reduce((mn,r)=>{const a=wsAvg(r.vals);return a!=null&&a<mn.a?{cat:r.cat,a}:mn;},{cat:'',a:101});return sfmx.cat?`Silver ${sfmx.cat} strongest at ${Math.round(sfmx.a)}%. Diamond ${sdmn.cat} needs improvement at ${Math.round(sdmn.a)}%.`:''})()}</div>`:''}
+      ${ins.weekly?.takeaway ? takeawayBar(ins.weekly)
+        : weakWkI>=0?`<div class="ps-insight-banner">${wkLabels[weakWkI]} was the weakest full week at N${Math.round(wkSales[weakWkI])}M. ${(()=>{const sfmx=wsSilver.reduce((mx,r)=>{const a=wsAvg(r.vals,r.sheetAvg);return a!=null&&a>mx.a?{cat:r.cat,a}:mx;},{cat:'',a:-1});const sdmn=wsDiamond.reduce((mn,r)=>{const a=wsAvg(r.vals,r.sheetAvg);return a!=null&&a<mn.a?{cat:r.cat,a}:mn;},{cat:'',a:101});return sfmx.cat?`Silver ${sfmx.cat} strongest at ${Math.round(sfmx.a)}%. Diamond ${sdmn.cat} needs improvement at ${Math.round(sdmn.a)}%.`:''})()}</div>`:''}
     </div>
   </div>`);
 
@@ -5367,7 +5492,8 @@ Rules: use the real numbers from the data. Name real outlets and categories. No 
     .ps-bar-val{color:${T.brand}!important;}
     .ps-insight-title{color:${T.brand}!important;}
     .ps-dept-header{background:${T.brand}!important;}
-    .ps-insight-banner{background:${T.brandBg}!important;border-color:${T.brand}!important;}
+    /* No !important — an inline background on a specific banner must still win */
+    .ps-insight-banner{background:${T.brandBg};border-color:${T.brand};}
     .ps-logo-text{color:${T.brand}!important;}
     .ps-tbl tbody tr:hover td{background:${T.brandBg}!important;}
     #ps-progress{background:${T.accent}!important;}
