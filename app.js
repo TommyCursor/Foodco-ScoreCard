@@ -4293,21 +4293,82 @@ function showThemePicker(onSelect, health) {
 // Each entry mirrors a range in api/report.js. The row/col origin matters:
 // the parsers treat the range's first cell as index [0][0], so an uploaded
 // sheet has to be sliced the same way or every column index shifts.
+// `match` accepts the Google Sheet's tab name and the shorter names real
+// exports use — a July file named its tabs REVENUE YTD, OUTLETS YTD, AREA
+// PERFORMANCE, CATEGORY and POWER, none of which matched the strict patterns.
+// Specs may share a tab on purpose (CATEGORY SALES and AREA & REGION each
+// hold two sections), so patterns are allowed to overlap.
 const UPLOAD_SHEETS = [
-  { key:'businessYTD',        tab:'BUSINESS YTD',         match:/business\s*ytd/i,        row:2, col:1 },
-  { key:'revenueOverview',    tab:'REVENUE OVERVIEW',     match:/revenue\s*overview/i,    row:2, col:1 },
-  { key:'revenueGrowth',      tab:'REVENUE & GROWTH',     match:/revenue.*growth/i,       row:1, col:1 },
-  { key:'outletsPerf',        tab:'OUTLETS PERFORMANCE',  match:/outlets?\s*perf/i,       row:1, col:0 },
-  { key:'regionPerf',         tab:'AREA & REGION',        match:/area\s*&?\s*region/i,    row:1, col:0, endRow:8 },
-  { key:'areaPerf',           tab:'AREA & REGION',        match:/area\s*&?\s*region/i,    row:9, col:0 },
-  { key:'topStores',          tab:'TOP REVENUE STORES',   match:/top\s*revenue\s*stores/i,row:0, col:0 },
-  { key:'categorySalesYTD',   tab:'CATEGORY SALES',       match:/category\s*sales/i,      row:0, col:1, endRow:15 },
-  { key:'categorySalesLatest',tab:'CATEGORY SALES',       match:/category\s*sales/i,      row:16,col:0 },
-  { key:'weeklySales',        tab:'WEEKLY SALES',         match:/weekly\s*sales/i,        row:2, col:1 },
-  { key:'categoryPerf',       tab:'CATEGORY PERFORMANCE', match:/category\s*performance/i,row:0, col:1 },
-  { key:'yoy',                tab:'YOY',                  match:/^yoy$|year.*year/i,      row:0, col:0 },
-  { key:'utility',            tab:'UTILITY & POWER COST', match:/utility|power\s*cost/i,  row:1, col:0 },
+  { key:'businessYTD',        tab:'BUSINESS YTD',         match:/^\s*(business|revenue)\s*ytd/i,       row:2, col:1 },
+  { key:'revenueOverview',    tab:'REVENUE OVERVIEW',     match:/revenue\s*overview/i,                 row:2, col:1 },
+  { key:'revenueGrowth',      tab:'REVENUE & GROWTH',     match:/revenue.*growth|^\s*growth/i,         row:1, col:1 },
+  { key:'outletsPerf',        tab:'OUTLETS PERFORMANCE',  match:/outlets?\s*(perf|ytd|summary)/i,      row:1, col:0 },
+  { key:'regionPerf',         tab:'AREA & REGION',        match:/area\s*(&|and)?\s*region|area\s*perf/i, row:1, col:0, endRow:8 },
+  { key:'areaPerf',           tab:'AREA & REGION',        match:/area\s*(&|and)?\s*region|area\s*perf/i, row:9, col:0 },
+  { key:'topStores',          tab:'TOP REVENUE STORES',   match:/top\s*(revenue\s*)?stores?|top\s*5/i, row:0, col:0 },
+  { key:'categorySalesYTD',   tab:'CATEGORY SALES',       match:/category\s*sales|^\s*category\s*$/i,  row:0, col:1, endRow:15 },
+  { key:'categorySalesLatest',tab:'CATEGORY SALES',       match:/category\s*sales|^\s*category\s*$/i,  row:16,col:0 },
+  { key:'weeklySales',        tab:'WEEKLY SALES',         match:/weekly\s*sales|^\s*weekly\s*$/i,      row:2, col:1 },
+  { key:'categoryPerf',       tab:'CATEGORY PERFORMANCE', match:/category\s*perf/i,                    row:0, col:1 },
+  { key:'yoy',                tab:'YOY',                  match:/^\s*yoy\s*$|year.*on.*year/i,         row:0, col:0 },
+  { key:'utility',            tab:'UTILITY & POWER COST', match:/utility|power/i,                      row:1, col:0 },
 ];
+
+// Tab names vary with whoever built the workbook, so a pattern list will always
+// lag reality. When a spec resolves to nothing by name, the model is shown the
+// tab names AND a sample of each tab's rows and asked which tab plays which
+// role. It returns tab NAMES only — never values — so no figure in the deck can
+// come from the model, and any name it invents is rejected below.
+async function aiMapTabs(sheetNames, samples, unresolved) {
+  if (!unresolved.length) return {};
+  const ROLE_HINTS = {
+    businessYTD:        'month-by-month total revenue for the year, one row per month plus a YTD row',
+    revenueOverview:    'revenue split by business line (Supermarket, Restaurant, Total) across month columns',
+    revenueGrowth:      'this year vs last year by month, with YoY and same-store percentages',
+    outletsPerf:        'one row per outlet/store with target, actual and achievement percentage',
+    regionPerf:         'performance grouped by region (e.g. Ibadan, Lagos, Abeokuta)',
+    areaPerf:           'outlets grouped under an area leader or area manager, with subtotals',
+    topStores:          'ranked best-performing stores, often repeated per month',
+    categorySalesYTD:   'sales by department/category across month columns',
+    categorySalesLatest:'departments for one month with target, actual and achievement',
+    weeklySales:        'week-by-week sales within a single month, often with stock availability',
+    categoryPerf:       'categories with year-on-year change and target achievement',
+    yoy:                'outlet-level comparison of two years, with quantity and value differences',
+    utility:            'power, diesel, petrol usage, hours and cost',
+  };
+  const roleList = unresolved.map(k => `- "${k}": ${ROLE_HINTS[k] || k}`).join('\n');
+  const preview = sheetNames.map(n => {
+    const rows = (samples[n] || []).slice(0, 6)
+      .map(r => (r || []).slice(0, 9).map(c => String(c ?? '').trim().slice(0, 24)).join(' | '));
+    return `TAB "${n}":\n${rows.join('\n') || '(empty)'}`;
+  }).join('\n\n');
+
+  const sys = `You match spreadsheet tabs to known report roles for a Nigerian food retail company.
+Judge by the CONTENT of each tab, not just its name — a tab called "POWER" holding diesel and electricity costs is the utility role.
+Return a json object mapping each role key to the exact tab name that fits it, copied verbatim from the TAB headings.
+Omit a role entirely if no tab genuinely fits — a wrong match is worse than none. Two roles may share one tab if it holds both sections. Return only the json object.`;
+  const usr = `Roles still needing a tab:\n${roleList}\n\nTabs in the workbook:\n\n${preview}`;
+
+  try {
+    const res = await fetch('/api/ai', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ json:true, max_tokens:900, temperature:0.1,
+        messages:[{role:'system',content:sys},{role:'user',content:usr}] }),
+    });
+    if (!res.ok) return {};
+    const txt = (await res.json()).choices?.[0]?.message?.content || '';
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) return {};
+    const raw = JSON.parse(m[0]);
+    // Only accept keys we asked about, mapped to tabs that actually exist
+    const clean = {};
+    for (const k of unresolved) {
+      const v = raw[k];
+      if (typeof v === 'string' && sheetNames.includes(v)) clean[k] = v;
+    }
+    return clean;
+  } catch (e) { console.warn('AI tab mapping unavailable', e); return {}; }
+}
 
 // How much a candidate slice still resembles a data table. Used to decide
 // whether the configured offsets suit an uploaded file, or whether it should be
@@ -4351,25 +4412,38 @@ window.uploadReportFile = async function(file, onStatus = () => {}) {
   const buf = await file.arrayBuffer();
   const wb  = XLSX.read(buf, { type:'array', cellDates:false, raw:false });
 
+  // Read every tab once, so both the name matcher and the model work from the
+  // same grids and the file is not parsed twice.
+  const grids = {};
+  for (const n of wb.SheetNames) {
+    const ws = wb.Sheets[n];
+    let range;
+    if (ws['!ref']) { range = XLSX.utils.decode_range(ws['!ref']); range.s.r = 0; range.s.c = 0; }
+    grids[n] = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', blankrows:true, raw:false, ...(range?{range}:{}) });
+  }
+
+  // Pass 1: match by name. Fast, offline, and right for the standard workbook.
+  const byKey = {};
+  for (const spec of UPLOAD_SHEETS) {
+    const name = wb.SheetNames.find(n => spec.match.test(String(n).trim()));
+    if (name) byKey[spec.key] = name;
+  }
+  // Pass 2: anything still unmatched goes to the model, which judges by content.
+  const unresolved = UPLOAD_SHEETS.filter(s => !byKey[s.key]).map(s => s.key);
+  let aiMapped = {};
+  if (unresolved.length) {
+    onStatus(`Naming didn't match ${unresolved.length} sheet${unresolved.length===1?'':'s'} — asking the model to identify them…`);
+    aiMapped = await aiMapTabs(wb.SheetNames, grids, unresolved);
+    Object.assign(byKey, aiMapped);
+  }
+
   // Three distinct outcomes, because "no rows" for a missing tab and "no rows"
   // for a tab whose layout differs need completely different fixes.
   const out = {}, matched = [], missing = [], empty = [], relaxed = [];
   for (const spec of UPLOAD_SHEETS) {
-    const name = wb.SheetNames.find(n => spec.match.test(String(n).trim()));
+    const name = byKey[spec.key];
     if (!name) { if(!missing.includes(spec.tab)) missing.push(spec.tab); out[spec.key] = []; continue; }
-    const ws = wb.Sheets[name];
-    // A sheet's !ref begins at its first non-empty cell, so a workbook with
-    // blank leading rows or columns would silently shift everything and the
-    // row/col offsets below would slice into real data. Force the origin back
-    // to A1 so those offsets always mean the same thing.
-    let range;
-    if (ws['!ref']) {
-      range = XLSX.utils.decode_range(ws['!ref']);
-      range.s.r = 0; range.s.c = 0;
-    }
-    // header:1 gives raw row arrays; defval:'' keeps blank cells as placeholders
-    // so a gap never collapses and shifts every column after it.
-    const grid = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', blankrows:true, raw:false, ...(range?{range}:{}) });
+    const grid = grids[name];
     const trim = rows => {
       const r = rows.map(x => [...(x || [])]);
       while (r.length && r[r.length-1].every(c => String(c ?? '').trim() === '')) r.pop();
@@ -4403,7 +4477,10 @@ window.uploadReportFile = async function(file, onStatus = () => {}) {
     throw new Error(`No recognised sheets. Expected tabs like "REVENUE OVERVIEW" or "OUTLETS PERFORMANCE"; this file has: ${wb.SheetNames.slice(0,10).join(', ')}`);
   }
   onStatus(`Read ${matched.length - empty.length} of ${UPLOAD_SHEETS.length} sheets`);
-  const report = { data: out, matched, missing, empty, relaxed, sheetNames: wb.SheetNames, fileName: file.name };
+  const aiTabs = Object.entries(aiMapped).map(([key,sheet]) => ({
+    key, sheet, tab: UPLOAD_SHEETS.find(s=>s.key===key)?.tab || key,
+  }));
+  const report = { data: out, matched, missing, empty, relaxed, aiTabs, sheetNames: wb.SheetNames, fileName: file.name };
   window._uploadReport = report;   // inspect in console for the full picture
   return report;
 };
@@ -4846,10 +4923,15 @@ window.presentReport = async function() {
     if (rep) {
       if (rep.missing.length)
         add('FILE · tabs not found', false,
-          `${rep.missing.join(', ')} — not in ${rep.fileName}. Its tabs are: ${rep.sheetNames.join(', ')}`);
+          `${rep.missing.join(', ')} — no tab in ${rep.fileName} matches these, so their slides stay empty. `
+          + `Rename a tab to match, or ignore if the file genuinely has no such data. `
+          + `Tabs in your file: ${rep.sheetNames.join(', ')}`);
       if (rep.empty.length)
         add('FILE · tabs found but empty', false,
           `${rep.empty.map(e=>`${e.sheet} (${e.rawRows} rows read, none usable)`).join('; ')} — the layout likely differs from the Google Sheet`);
+      if (rep.aiTabs?.length)
+        add('FILE · identified by AI', true,
+          `${rep.aiTabs.map(a=>`"${a.sheet}" read as ${a.tab}`).join(', ')} — matched on content, since the names differ from the Google Sheet`);
       if (rep.relaxed?.length)
         add('FILE · read from A1 instead', true,
           `${rep.relaxed.map(r=>r.sheet).join(', ')} — your layout differs from the Google Sheet, so these were read whole and the parsers found their own headers`);
