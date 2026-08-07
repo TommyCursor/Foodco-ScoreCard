@@ -4294,19 +4294,19 @@ function showThemePicker(onSelect, health) {
 // the parsers treat the range's first cell as index [0][0], so an uploaded
 // sheet has to be sliced the same way or every column index shifts.
 const UPLOAD_SHEETS = [
-  { key:'businessYTD',        match:/business\s*ytd/i,        row:2, col:1 },
-  { key:'revenueOverview',    match:/revenue\s*overview/i,    row:2, col:1 },
-  { key:'revenueGrowth',      match:/revenue.*growth/i,       row:1, col:1 },
-  { key:'outletsPerf',        match:/outlets?\s*perf/i,       row:1, col:0 },
-  { key:'regionPerf',         match:/area\s*&?\s*region/i,    row:1, col:0, endRow:8 },
-  { key:'areaPerf',           match:/area\s*&?\s*region/i,    row:9, col:0 },
-  { key:'topStores',          match:/top\s*revenue\s*stores/i,row:0, col:0 },
-  { key:'categorySalesYTD',   match:/category\s*sales/i,      row:0, col:1, endRow:15 },
-  { key:'categorySalesLatest',match:/category\s*sales/i,      row:16,col:0 },
-  { key:'weeklySales',        match:/weekly\s*sales/i,        row:2, col:1 },
-  { key:'categoryPerf',       match:/category\s*performance/i,row:0, col:1 },
-  { key:'yoy',                match:/^yoy$|year.*year/i,      row:0, col:0 },
-  { key:'utility',            match:/utility|power\s*cost/i,  row:1, col:0 },
+  { key:'businessYTD',        tab:'BUSINESS YTD',         match:/business\s*ytd/i,        row:2, col:1 },
+  { key:'revenueOverview',    tab:'REVENUE OVERVIEW',     match:/revenue\s*overview/i,    row:2, col:1 },
+  { key:'revenueGrowth',      tab:'REVENUE & GROWTH',     match:/revenue.*growth/i,       row:1, col:1 },
+  { key:'outletsPerf',        tab:'OUTLETS PERFORMANCE',  match:/outlets?\s*perf/i,       row:1, col:0 },
+  { key:'regionPerf',         tab:'AREA & REGION',        match:/area\s*&?\s*region/i,    row:1, col:0, endRow:8 },
+  { key:'areaPerf',           tab:'AREA & REGION',        match:/area\s*&?\s*region/i,    row:9, col:0 },
+  { key:'topStores',          tab:'TOP REVENUE STORES',   match:/top\s*revenue\s*stores/i,row:0, col:0 },
+  { key:'categorySalesYTD',   tab:'CATEGORY SALES',       match:/category\s*sales/i,      row:0, col:1, endRow:15 },
+  { key:'categorySalesLatest',tab:'CATEGORY SALES',       match:/category\s*sales/i,      row:16,col:0 },
+  { key:'weeklySales',        tab:'WEEKLY SALES',         match:/weekly\s*sales/i,        row:2, col:1 },
+  { key:'categoryPerf',       tab:'CATEGORY PERFORMANCE', match:/category\s*performance/i,row:0, col:1 },
+  { key:'yoy',                tab:'YOY',                  match:/^yoy$|year.*year/i,      row:0, col:0 },
+  { key:'utility',            tab:'UTILITY & POWER COST', match:/utility|power\s*cost/i,  row:1, col:0 },
 ];
 
 function loadSheetJS() {
@@ -4328,10 +4328,12 @@ window.uploadReportFile = async function(file, onStatus = () => {}) {
   const buf = await file.arrayBuffer();
   const wb  = XLSX.read(buf, { type:'array', cellDates:false, raw:false });
 
-  const out = {}, matched = [], missing = [];
+  // Three distinct outcomes, because "no rows" for a missing tab and "no rows"
+  // for a tab whose layout differs need completely different fixes.
+  const out = {}, matched = [], missing = [], empty = [];
   for (const spec of UPLOAD_SHEETS) {
     const name = wb.SheetNames.find(n => spec.match.test(String(n).trim()));
-    if (!name) { missing.push(spec.key); out[spec.key] = []; continue; }
+    if (!name) { if(!missing.includes(spec.tab)) missing.push(spec.tab); out[spec.key] = []; continue; }
     const ws = wb.Sheets[name];
     // A sheet's !ref begins at its first non-empty cell, so a workbook with
     // blank leading rows or columns would silently shift everything and the
@@ -4351,13 +4353,18 @@ window.uploadReportFile = async function(file, onStatus = () => {}) {
     // Drop trailing all-empty rows so parsers that stop at a blank row behave
     while (sliced.length && sliced[sliced.length-1].every(c => String(c ?? '').trim() === '')) sliced.pop();
     out[spec.key] = sliced;
-    matched.push({ key: spec.key, sheet: name, rows: sliced.length });
+    matched.push({ key: spec.key, tab: spec.tab, sheet: name, rows: sliced.length });
+    // Tab exists but the slice produced nothing — the layout differs from the
+    // Google Sheet, which is a different problem from the tab being absent.
+    if (!sliced.length) empty.push({ key: spec.key, tab: spec.tab, sheet: name, rawRows: grid.length });
   }
   if (!matched.length) {
-    throw new Error(`No recognised sheets. Expected tabs like "REVENUE OVERVIEW" or "OUTLETS PERFORMANCE"; this file has: ${wb.SheetNames.slice(0,8).join(', ')}`);
+    throw new Error(`No recognised sheets. Expected tabs like "REVENUE OVERVIEW" or "OUTLETS PERFORMANCE"; this file has: ${wb.SheetNames.slice(0,10).join(', ')}`);
   }
-  onStatus(`Read ${matched.length} of ${UPLOAD_SHEETS.length} sheets`);
-  return { data: out, matched, missing, sheetNames: wb.SheetNames };
+  onStatus(`Read ${matched.length - empty.length} of ${UPLOAD_SHEETS.length} sheets`);
+  const report = { data: out, matched, missing, empty, sheetNames: wb.SheetNames, fileName: file.name };
+  window._uploadReport = report;   // inspect in console for the full picture
+  return report;
 };
 
 // Wires a file input + drop target to the upload pipeline. Returns a teardown fn.
@@ -4790,6 +4797,21 @@ window.presentReport = async function() {
     const out=[];
     const add=(sheet,ok,detail)=>out.push({sheet,ok,detail});
     const near=(a,b,tol=0.02)=>a!=null&&b!=null&&b!==0&&Math.abs(a-b)/Math.abs(b)<=tol;
+
+    // When the data came from a file, lead with WHY sheets are missing —
+    // an absent tab and a differently-laid-out tab need different fixes, and
+    // "no rows found" repeated ten times distinguishes neither.
+    const rep = window._reportSource?.type==='upload' ? window._uploadReport : null;
+    if (rep) {
+      if (rep.missing.length)
+        add('FILE · tabs not found', false,
+          `${rep.missing.join(', ')} — not in ${rep.fileName}. Its tabs are: ${rep.sheetNames.join(', ')}`);
+      if (rep.empty.length)
+        add('FILE · tabs found but empty', false,
+          `${rep.empty.map(e=>`${e.sheet} (${e.rawRows} rows read, none usable)`).join('; ')} — the layout likely differs from the Google Sheet`);
+      if (!rep.missing.length && !rep.empty.length)
+        add('FILE', true, `${rep.fileName} — all ${rep.matched.length} sheets read`);
+    }
 
     add('BUSINESS YTD', revVs.length>0 && ytdRow!=null,
       !revVs.length?'no monthly revenue rows found':!ytdRow?'YTD row missing — range may be full':`${revVs.length} months + YTD`);
