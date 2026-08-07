@@ -2749,6 +2749,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     this.style.height = Math.min(this.scrollHeight, 120) + 'px';
   });
 
+  // ── Executive Report: optional local file instead of the live sheet ────────
+  (() => {
+    const input = document.getElementById('reportFileInput');
+    const zone  = document.getElementById('uploadZone');
+    const stat  = document.getElementById('uploadStatus');
+    if (!input) return;
+    const say = (msg, isWarn) => {
+      if (!stat) return;
+      stat.style.display = 'block';
+      stat.textContent = msg;
+      stat.style.color = isWarn ? '#b45309' : '#15803d';
+    };
+    window.initReportUpload(input, {
+      dropZone: zone,
+      onStatus: say,
+      onLoaded: () => {
+        // Same render path as the API result, so the report, PPTX export and
+        // presentation all behave identically regardless of where data came from
+        const out = document.getElementById('execReportOutput');
+        if (out) out.innerHTML = renderExecReport(window._lastReportData);
+        document.getElementById('execReportError')?.classList.add('hidden');
+      },
+    });
+  })();
+
   // ── Executive Report ───────────────────────────────────────────────────────
   document.getElementById('execReportGenerateBtn').addEventListener('click', async () => {
     const btn     = document.getElementById('execReportGenerateBtn');
@@ -2774,6 +2799,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       window._lastReportData = data;
+      window._reportSource = { type:'sheet', at:Date.now() };
       out.innerHTML = renderExecReport(data);
     } catch (e) {
       errEl.textContent = e.message || 'Network error — please try again.';
@@ -4258,6 +4284,122 @@ function showThemePicker(onSelect, health) {
   document.addEventListener('keydown', escHandler);
   document.body.appendChild(overlay);
 }
+
+// ── Spreadsheet upload ────────────────────────────────────────────────────────
+// Reads an .xlsx/.xls/.csv and produces exactly the same shape the /api/report
+// endpoint returns, so every parser, validator, AI call and slide downstream
+// works unchanged — the upload is just a second source for the same 13 arrays.
+//
+// Each entry mirrors a range in api/report.js. The row/col origin matters:
+// the parsers treat the range's first cell as index [0][0], so an uploaded
+// sheet has to be sliced the same way or every column index shifts.
+const UPLOAD_SHEETS = [
+  { key:'businessYTD',        match:/business\s*ytd/i,        row:2, col:1 },
+  { key:'revenueOverview',    match:/revenue\s*overview/i,    row:2, col:1 },
+  { key:'revenueGrowth',      match:/revenue.*growth/i,       row:1, col:1 },
+  { key:'outletsPerf',        match:/outlets?\s*perf/i,       row:1, col:0 },
+  { key:'regionPerf',         match:/area\s*&?\s*region/i,    row:1, col:0, endRow:8 },
+  { key:'areaPerf',           match:/area\s*&?\s*region/i,    row:9, col:0 },
+  { key:'topStores',          match:/top\s*revenue\s*stores/i,row:0, col:0 },
+  { key:'categorySalesYTD',   match:/category\s*sales/i,      row:0, col:1, endRow:15 },
+  { key:'categorySalesLatest',match:/category\s*sales/i,      row:16,col:0 },
+  { key:'weeklySales',        match:/weekly\s*sales/i,        row:2, col:1 },
+  { key:'categoryPerf',       match:/category\s*performance/i,row:0, col:1 },
+  { key:'yoy',                match:/^yoy$|year.*year/i,      row:0, col:0 },
+  { key:'utility',            match:/utility|power\s*cost/i,  row:1, col:0 },
+];
+
+function loadSheetJS() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (window._xlsxLoading) return window._xlsxLoading;
+  window._xlsxLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload  = () => window.XLSX ? resolve(window.XLSX) : reject(new Error('XLSX failed to initialise'));
+    s.onerror = () => reject(new Error('Could not load the spreadsheet reader. Check your connection.'));
+    document.head.appendChild(s);
+  });
+  return window._xlsxLoading;
+}
+
+window.uploadReportFile = async function(file, onStatus = () => {}) {
+  const XLSX = await loadSheetJS();
+  onStatus('Reading file…');
+  const buf = await file.arrayBuffer();
+  const wb  = XLSX.read(buf, { type:'array', cellDates:false, raw:false });
+
+  const out = {}, matched = [], missing = [];
+  for (const spec of UPLOAD_SHEETS) {
+    const name = wb.SheetNames.find(n => spec.match.test(String(n).trim()));
+    if (!name) { missing.push(spec.key); out[spec.key] = []; continue; }
+    const ws = wb.Sheets[name];
+    // A sheet's !ref begins at its first non-empty cell, so a workbook with
+    // blank leading rows or columns would silently shift everything and the
+    // row/col offsets below would slice into real data. Force the origin back
+    // to A1 so those offsets always mean the same thing.
+    let range;
+    if (ws['!ref']) {
+      range = XLSX.utils.decode_range(ws['!ref']);
+      range.s.r = 0; range.s.c = 0;
+    }
+    // header:1 gives raw row arrays; defval:'' keeps blank cells as placeholders
+    // so a gap never collapses and shifts every column after it.
+    const grid = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', blankrows:true, raw:false, ...(range?{range}:{}) });
+    const sliced = grid
+      .slice(spec.row, spec.endRow != null ? spec.endRow : undefined)
+      .map(r => (r || []).slice(spec.col));
+    // Drop trailing all-empty rows so parsers that stop at a blank row behave
+    while (sliced.length && sliced[sliced.length-1].every(c => String(c ?? '').trim() === '')) sliced.pop();
+    out[spec.key] = sliced;
+    matched.push({ key: spec.key, sheet: name, rows: sliced.length });
+  }
+  if (!matched.length) {
+    throw new Error(`No recognised sheets. Expected tabs like "REVENUE OVERVIEW" or "OUTLETS PERFORMANCE"; this file has: ${wb.SheetNames.slice(0,8).join(', ')}`);
+  }
+  onStatus(`Read ${matched.length} of ${UPLOAD_SHEETS.length} sheets`);
+  return { data: out, matched, missing, sheetNames: wb.SheetNames };
+};
+
+// Wires a file input + drop target to the upload pipeline. Returns a teardown fn.
+window.initReportUpload = function(inputEl, { onLoaded, onStatus = () => {}, dropZone } = {}) {
+  if (!inputEl) return () => {};
+  const handle = async file => {
+    if (!file) return;
+    if (!/\.(xlsx|xlsm|xls|csv)$/i.test(file.name)) { onStatus(`"${file.name}" is not a spreadsheet. Use .xlsx, .xls or .csv.`, true); return; }
+    if (file.size > 15 * 1024 * 1024) { onStatus('That file is over 15MB. Trim unused sheets and try again.', true); return; }
+    try {
+      const res = await window.uploadReportFile(file, onStatus);
+      window._lastReportData = res.data;
+      window._reportSource = { type:'upload', name:file.name, at:Date.now() };
+      const note = res.missing.length
+        ? `Loaded ${file.name} — ${res.matched.length} sheets. Not found: ${res.missing.join(', ')}.`
+        : `Loaded ${file.name} — all ${res.matched.length} sheets read.`;
+      onStatus(note, res.missing.length > 0);
+      onLoaded?.(res);
+    } catch (e) {
+      onStatus(e.message || 'Could not read that file.', true);
+    }
+  };
+  const onPick = e => handle(e.target.files?.[0]);
+  inputEl.addEventListener('change', onPick);
+  const stop = e => { e.preventDefault(); e.stopPropagation(); };
+  const onDrop = e => { stop(e); dropZone?.classList.remove('is-dragging'); handle(e.dataTransfer?.files?.[0]); };
+  const onOver = e => { stop(e); dropZone?.classList.add('is-dragging'); };
+  const onLeave = e => { stop(e); dropZone?.classList.remove('is-dragging'); };
+  if (dropZone) {
+    dropZone.addEventListener('drop', onDrop);
+    dropZone.addEventListener('dragover', onOver);
+    dropZone.addEventListener('dragleave', onLeave);
+  }
+  return () => {
+    inputEl.removeEventListener('change', onPick);
+    if (dropZone) {
+      dropZone.removeEventListener('drop', onDrop);
+      dropZone.removeEventListener('dragover', onOver);
+      dropZone.removeEventListener('dragleave', onLeave);
+    }
+  };
+};
 
 // ── Action Plan in-presentation editor ────────────────────────────────────────
 window._apEdit = function(planKey, monthLabel) {

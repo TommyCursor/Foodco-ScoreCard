@@ -389,6 +389,21 @@
           <span id="execReportSpinner" class="hint-text hidden">Reading spreadsheet…</span>
         </div>
         <div id="execReportError" class="form-error hidden" style="margin-top:10px;"></div>
+
+        <!-- Optional: use a local file instead of the live Google Sheet -->
+        <div id="uploadZone" style="margin-top:18px;border:1.5px dashed #d4d4d8;border-radius:8px;padding:14px 16px;transition:border-color .15s,background .15s;">
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <div style="flex:1;min-width:220px;">
+              <div style="font-size:0.82rem;font-weight:700;color:#3f3f46;">Or use your own file</div>
+              <div class="hint-text" style="margin:2px 0 0;">Drop an .xlsx, .xls or .csv here, or browse. Sheet tabs should be named like the Google Sheet — REVENUE OVERVIEW, OUTLETS PERFORMANCE, and so on.</div>
+            </div>
+            <label class="btn-primary" style="font-size:0.78rem;padding:6px 14px;cursor:pointer;margin:0;">
+              Choose file
+              <input type="file" id="reportFileInput" accept=".xlsx,.xlsm,.xls,.csv" style="display:none;">
+            </label>
+          </div>
+          <div id="uploadStatus" class="hint-text" style="margin-top:9px;display:none;"></div>
+        </div>
       </div>
       <div id="execReportOutput"></div>
     </div>

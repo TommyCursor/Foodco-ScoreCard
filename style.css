@@ -4411,3 +4411,6 @@ tfoot .score-cell {
   .er-tot td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   #appHeader, #aiFab, .admin-nav, .kpi-card:not(:last-child) { display: none !important; }
 }
+
+/* Spreadsheet upload drop target */
+#uploadZone.is-dragging { border-color: #ea580c; background: #fff7ed; }
