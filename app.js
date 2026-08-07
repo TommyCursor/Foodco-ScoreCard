@@ -4532,7 +4532,7 @@ window.presentReport = async function() {
 
   // ── AI Insights ───────────────────────────────────────────────────────────
   // Build a clean summary for Groq — only the numbers the AI needs, not raw sheet noise
-  const aiSummary = {
+  let aiSummary; try { aiSummary = {
     month: fullMonth, year: 2026,
     revenue: {
       june_bn: lastV?.toFixed(2), ytd_bn: ytdTot?.toFixed(2),
@@ -4541,8 +4541,8 @@ window.presentReport = async function() {
       q1_avg_bn: q1a?.toFixed(2), q2_avg_bn: q2a?.toFixed(2),
     },
     core_business: {
-      supermarket: { june_mn: smJunV, may_mn: smMayV, share_pct: smPct?.toFixed(1) },
-      restaurant:  { june_mn: rstJunV, may_mn: rstMayV, share_pct: rstPct?.toFixed(1) },
+      supermarket: { june_mn: smJunV, share_pct: smPct },
+      restaurant:  { june_mn: rstJunV, share_pct: rstPct },
       total_june_mn: totJunV,
     },
     outlets: {
@@ -4552,7 +4552,7 @@ window.presentReport = async function() {
       stable:      outRows.filter(r=>normPct(r[5])>=90&&normPct(r[5])<100).length,
       weak:        outRows.filter(r=>normPct(r[5])>=80&&normPct(r[5])<90).length,
       concerning:  outRows.filter(r=>normPct(r[5])<80).length,
-      bottom3: outRows.sort((a,b)=>normPct(a[5])-normPct(b[5])).slice(0,3).map(r=>({name:r[0],pct:normPct(r[5])?.toFixed(1)})),
+      bottom3: [...outRows].sort((a,b)=>(normPct(a[5])||0)-(normPct(b[5])||0)).slice(0,3).map(r=>({name:r[0],pct:normPct(r[5])?.toFixed(1)})),
     },
     regions: regions.map(r=>({name:r[0],achievement_pct:normPct(r[5])?.toFixed(1)})),
     yoy: {
@@ -4561,7 +4561,7 @@ window.presentReport = async function() {
     },
     weekly: { weeks: wkLabels, sales_mn: wkSales.map(v=>v?.toFixed(0)), is_full: wkIsFull },
     utility: { rows: utilD.slice(0,6).map(r=>({label:r[0],value:r[1]})) },
-  };
+  }; } catch(e) { console.warn('aiSummary build error', e); aiSummary = {}; }
 
   const AI_SYSTEM = `You are a senior business intelligence analyst for FoodCo Nigeria, a food retail company with Supermarket (SM) and Restaurant (RST) channels across Nigeria. Analyze the monthly sales data and generate concise, boardroom-ready insights for a CEO presentation.
 
@@ -4591,7 +4591,9 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
       const jsonMatch = txt.match(/\{[\s\S]*\}/);
       if (jsonMatch) ins = JSON.parse(jsonMatch[0]);
     }
-  } catch(e) { console.warn('AI insights unavailable, using static titles', e); }
+  } catch(e) { console.warn('AI insights unavailable — using static slide titles', e); }
+  // Guarantee ins always has safe accessors — no crash if AI returns partial JSON
+  ins = ins || {};
 
   // ── Slide builder helpers ──────────────────────────────────────────────────
   const TABS=['REVENUE','GROWTH','OUTLETS','CATEGORY','COMPARISON'];
