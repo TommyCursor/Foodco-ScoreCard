@@ -4226,14 +4226,18 @@ function showThemePicker(onSelect) {
     </div>
     <div style="color:#3f3f46;font-size:0.8em;margin-top:38px;letter-spacing:.5px">Click a theme to start your presentation &nbsp;·&nbsp; Press Esc to cancel</div>
   `;
-  window._themePickerSelect = id => {
-    const T = PS_THEMES.find(t => t.id === id);
-    if (!T) return;
-    document.body.removeChild(overlay);
+  const teardown = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', escHandler);
     delete window._themePickerSelect;
-    onSelect(T);
   };
-  const escHandler = e => { if (e.key === 'Escape') { document.body.removeChild(overlay); document.removeEventListener('keydown', escHandler); delete window._themePickerSelect; } };
+  window._themePickerSelect = id => {
+    const theme = PS_THEMES.find(t => t.id === id);
+    if (!theme) return;
+    teardown();
+    onSelect(theme);
+  };
+  const escHandler = e => { if (e.key === 'Escape') teardown(); };
   document.addEventListener('keydown', escHandler);
   document.body.appendChild(overlay);
 }
@@ -4492,6 +4496,9 @@ window.presentReport = async function() {
     ? `<img src="${window._presLogoUrl}" class="ps-logo" alt="FoodCo"/>`
     : `<span class="ps-logo-text">FoodCo</span>`;
 
+  // ── Kick off AI analysis, then let the user pick a theme while it runs ─────
+  const aiRequest = startAIAnalysis();
+
   // ── Theme selection ────────────────────────────────────────────────────────
   const T = await new Promise(resolve => showThemePicker(resolve));
 
@@ -4530,95 +4537,163 @@ window.presentReport = async function() {
       .replace(/6px solid #ea580c/g,   `6px solid ${T.accent}`);
   }
 
-  // ── AI Insights ───────────────────────────────────────────────────────────
-  // Build a clean summary for Groq — only the numbers the AI needs, not raw sheet noise
-  let aiSummary; try { aiSummary = {
-    month: fullMonth, year: 2026,
-    revenue: {
-      june_bn: lastV?.toFixed(2), ytd_bn: ytdTot?.toFixed(2),
-      mom_change_pct: momR?.toFixed(1),
-      peak_month: peakLb, peak_bn: peakV?.toFixed(2),
-      q1_avg_bn: q1a?.toFixed(2), q2_avg_bn: q2a?.toFixed(2),
-    },
+  // ── AI Analysis ───────────────────────────────────────────────────────────
+  // Declared as a hoisted function so the request can start before the theme
+  // picker opens — the user picking a theme hides the model latency.
+  async function startAIAnalysis(){
+  // Send the ACTUAL data rows, not a pre-digested summary — the model does the
+  // analysis, so it needs to see what a human analyst would see.
+  let aiPayload; try { aiPayload = {
+    month: fullMonth, year: 2026, currency: 'Naira',
+    monthly_revenue_bn: ytdMonths.map(r=>({month:String(r[0]||'').toUpperCase(), revenue_bn:pN(r[1])})).filter(m=>m.revenue_bn!=null),
+    ytd_total_bn: ytdTot, mom_change_pct: momR,
+    peak: { month:peakLb, revenue_bn:peakV },
+    quarter_avg_bn: { q1:q1a, q2:q2a },
     core_business: {
-      supermarket: { june_mn: smJunV, share_pct: smPct },
-      restaurant:  { june_mn: rstJunV, share_pct: rstPct },
-      total_june_mn: totJunV,
+      months: rovMonths,
+      rows: coreBiz.map(r=>({ name:r[0], values:rovMonths.map((_,ci)=>rovIdx[ci]!=null?pN(r[rovIdx[ci]]):pN(r[ci+1])) })),
+      supermarket_mn: smJunV, restaurant_mn: rstJunV, total_mn: totJunV,
+      supermarket_share_pct: smPct, restaurant_share_pct: rstPct,
     },
+    other_business: otherBiz.map(r=>({
+      name:r[0],
+      prev_month: mayIdx>=0&&rovIdx[mayIdx]!=null?pN(r[rovIdx[mayIdx]]):null,
+      this_month: junIdx>=0&&rovIdx[junIdx]!=null?pN(r[rovIdx[junIdx]]):null,
+    })),
+    growth: rgRows.map(r=>({ period:r[0], val_2026:pN(r[1]), val_2025:pN(r[2]), val_yoy_pct:pN(r[3]), vol_yoy_pct:pN(r[4]), same_store_pct:pN(r[5]) })),
     outlets: {
-      global_achievement_pct: gAch?.toFixed(1),
-      total: outRows.length,
-      great:       outRows.filter(r=>normPct(r[5])>=100).length,
-      stable:      outRows.filter(r=>normPct(r[5])>=90&&normPct(r[5])<100).length,
-      weak:        outRows.filter(r=>normPct(r[5])>=80&&normPct(r[5])<90).length,
-      concerning:  outRows.filter(r=>normPct(r[5])<80).length,
-      bottom3: [...outRows].sort((a,b)=>(normPct(a[5])||0)-(normPct(b[5])||0)).slice(0,3).map(r=>({name:r[0],pct:normPct(r[5])?.toFixed(1)})),
+      global: globalOut?{target:pN(globalOut[1]),actual:pN(globalOut[2]),achievement_pct:gAch}:null,
+      rows: outRows.map(r=>({ name:r[0], target:pN(r[1]), actual:pN(r[2]), achievement_pct:normPct(r[5]) })),
     },
-    regions: regions.map(r=>({name:r[0],achievement_pct:normPct(r[5])?.toFixed(1)})),
-    yoy: {
-      top_growers:   yoyGrow.slice(0,3).map(r=>({name:r[0],pct:yoyPct(r)?.toFixed(1)})),
-      top_decliners: yoyDec.slice(0,3).map(r=>({name:r[0],pct:yoyPct(r)?.toFixed(1)})),
+    regions: regions.map(r=>({ name:r[0], target:pN(r[3]), actual:pN(r[2]), achievement_pct:normPct(r[5]??r[4]) })),
+    area_leaders: areaRows.filter(a=>!a.isTotal).map(a=>({ leader:a.leader, outlet:a.outlet, achievement_pct:normPct(a.pct) })),
+    category_ytd: { columns:catYCols, rows:catYRows.slice(0,14).map(r=>({name:r[0], values:r.slice(1).map(pN)})) },
+    category_month: { columns:catLCols, rows:catLRows.slice(0,14).map(r=>({name:r[0], values:r.slice(1).map(pN)})) },
+    weekly: wkLabels.map((l,i)=>({ week:l, dates:wkDates[i]||null, sales_mn:wkSales[i], avg_daily_mn:wkADS[i], is_full_week:wkIsFull[i] })),
+    yoy_outlets: {
+      growers:   yoyGrow.slice(0,8).map(r=>({name:r[0], yoy_pct:yoyPct(r)})),
+      decliners: yoyDec.slice(0,8).map(r=>({name:r[0], yoy_pct:yoyPct(r)})),
     },
-    weekly: { weeks: wkLabels, sales_mn: wkSales.map(v=>v?.toFixed(0)), is_full: wkIsFull },
-    utility: { rows: utilD.slice(0,6).map(r=>({label:r[0],value:r[1]})) },
-  }; } catch(e) { console.warn('aiSummary build error', e); aiSummary = {}; }
+    utility: utilD.slice(0,10).map(r=>({ label:r[0], values:r.slice(1,6) })),
+  }; } catch(e) { console.warn('AI payload build error', e); aiPayload = {}; }
 
-  const AI_SYSTEM = `You are a senior business intelligence analyst for FoodCo Nigeria, a food retail company with Supermarket (SM) and Restaurant (RST) channels across Nigeria. Analyze the monthly sales data and generate concise, boardroom-ready insights for a CEO presentation.
+  const AI_SYSTEM = `You are the Head of Sales Analytics at FoodCo Nigeria, a food retail group operating Supermarket (SM) and Restaurant/3F (RST) channels across Nigeria. You are preparing the monthly sales review deck that the CEO and exec team will sit through.
 
-For each section return:
-- headline: Journalistic headline stating the KEY FINDING (not topic). Max 12 words. Lead with the number or subject.
-- sentiment: "positive" | "warning" | "critical" | "neutral"
-- narrative: 1-2 punchy sentences a CFO would say. Be specific, reference actual numbers.
-- alert: Short label if warning/critical (e.g. "3 outlets below 80%"), else null.
+Your job is NOT to describe the data. It is to tell them what it MEANS and what to DO. Every line you write must be something a sharp analyst would say out loud in the room. Never restate a number without saying why it matters.
 
-Benchmarks: Achievement >=100% GREAT, >=90% STABLE, >=80% WEAK, <80% CONCERNING. YoY >10% strong, >0% growing, <0% declining.
+Benchmarks: Achievement >=100% GREAT, 90-99% STABLE, 80-89% WEAK, <80% CONCERNING. YoY >10% strong growth, 0-10% modest growth, <0% decline. Assume partial weeks (is_full_week false) have lower totals legitimately — never flag them as a decline.
 
-Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy, weekly, utility, action_plan`;
+Return a single json object with exactly these keys:
 
-  let ins = {};
+"executive": {
+  "headline": "The single most important sentence about this month. Max 14 words.",
+  "sentiment": "positive|warning|critical|neutral",
+  "findings": [ 4 items, each { "label": "2-4 word category e.g. Revenue, Outlet Risk", "metric": "the number e.g. N2.31B or -4.2%", "text": "one sentence on what it means", "sentiment": "positive|warning|critical|neutral" } ]
+},
+"priorities": [ 3 items, each { "title": "short imperative e.g. Recover Lekki and Gbagi", "why": "one sentence on the business reason", "impact": "quantified expected outcome", "urgency": "HIGH|MED|LOW" } ],
+"risks": [ 2-3 items, each { "text": "the risk in one sentence", "metric": "supporting number" } ],
+"opportunities": [ 2-3 items, each { "text": "the opportunity in one sentence", "metric": "supporting number" } ],
+"actions": [ 6-8 items, each { "action": "specific imperative action", "owner": "a role e.g. HSO, Category Mgt, Operations Support", "due": "a day of the month e.g. 15 or 30", "priority": "HIGH|MED|LOW", "outcome": "measurable expected result" } ],
+
+and one object per slide section, each with the SAME shape:
+  { "headline": "finding-led title, max 12 words, lead with the subject or number",
+    "sentiment": "positive|warning|critical|neutral",
+    "story": "1-2 sentences of analysis a CFO would say",
+    "bullets": [ 3 items, each { "text": "one specific insight with numbers", "sentiment": "positive|warning|critical|neutral" } ],
+    "spotlight": [ names of up to 3 rows in that section's table that deserve attention, exact names as given in the data, or [] ],
+    "takeaway": "one sentence: the so-what or the recommended move",
+    "alert": "short badge text if warning/critical, else null" }
+
+The slide section keys are exactly: "revenue", "core_business", "growth", "outlets", "regions", "area_leaders", "category_ytd", "category_month", "weekly", "yoy", "utility".
+
+Rules: use the real numbers from the data. Name real outlets and categories. No filler like "continued monitoring is advised". No markdown. Return only the json object.`;
+
   try {
     const aiRes = await fetch('/api/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [
-        { role: 'system', content: AI_SYSTEM },
-        { role: 'user', content: JSON.stringify(aiSummary) },
-      ]}),
+      body: JSON.stringify({
+        json: true, max_tokens: 8000, temperature: 0.4,
+        messages: [
+          { role: 'system', content: AI_SYSTEM },
+          { role: 'user', content: JSON.stringify(aiPayload) },
+        ],
+      }),
     });
-    if (aiRes.ok) {
-      const aiData = await aiRes.json();
-      const txt = aiData.choices?.[0]?.message?.content || '';
-      const jsonMatch = txt.match(/\{[\s\S]*\}/);
-      if (jsonMatch) ins = JSON.parse(jsonMatch[0]);
+    if (!aiRes.ok) {
+      console.warn('AI request failed', aiRes.status, await aiRes.text().catch(()=>''));
+      return {};
     }
-  } catch(e) { console.warn('AI insights unavailable — using static slide titles', e); }
-  // Guarantee ins always has safe accessors — no crash if AI returns partial JSON
-  ins = ins || {};
+    const aiData = await aiRes.json();
+    const txt = aiData.choices?.[0]?.message?.content || '';
+    const jsonMatch = txt.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) { console.warn('AI returned no parseable JSON', txt.slice(0,300)); return {}; }
+    return JSON.parse(jsonMatch[0]) || {};
+  } catch(e) { console.warn('AI unavailable — falling back to static slides', e); return {}; }
+  } // end startAIAnalysis
+
+  // Theme is already chosen by now, so this usually resolves instantly
+  const ins = await aiRequest.catch(()=>({})) || {};
+  window._presInsights = ins; // inspect in console to debug AI output
 
   // ── Slide builder helpers ──────────────────────────────────────────────────
   const TABS=['REVENUE','GROWTH','OUTLETS','CATEGORY','COMPARISON'];
   function tabBar(active){
     return `<div class="ps-tabbar">${TABS.map(t=>`<div class="ps-tab${t===active?' ps-tab-on':''}">${t}</div>`).join('')}</div><div class="ps-orange-stripe"></div>`;
   }
-  // Renders the AI insight strip between the nav bar and title row
-  function insightBar(ins){
-    if(!ins?.narrative) return '';
-    const palettes={
-      positive:{bg:'#F0FDF4',border:'#16a34a',text:'#15803d',badge:'#16a34a'},
-      warning: {bg:'#FFFBEB',border:'#D97706',text:'#92400e',badge:'#D97706'},
-      critical:{bg:'#FFF1F2',border:'#E11D48',text:'#9f1239',badge:'#E11D48'},
-      neutral: {bg:'#F8FAFC',border:'#64748b',text:'#475569',badge:'#64748b'},
-    };
-    const p=palettes[ins.sentiment]||palettes.neutral;
+  // ── AI-driven rendering ────────────────────────────────────────────────────
+  // Sentiment palette is deliberately OUTSIDE the theme system — good/bad must
+  // read the same in every theme, so these hexes are absent from applyTheme().
+  const SENT={
+    // #EFFDF3 not #F0FDF4 — the latter is a theme token applyTheme() would recolour
+    positive:{bg:'#EFFDF3',border:'#16a34a',text:'#15803d',badge:'#16a34a'},
+    warning: {bg:'#FFFBEB',border:'#D97706',text:'#92400e',badge:'#D97706'},
+    critical:{bg:'#FFF1F2',border:'#E11D48',text:'#9f1239',badge:'#E11D48'},
+    neutral: {bg:'#F8FAFC',border:'#64748b',text:'#475569',badge:'#64748b'},
+  };
+  const sent=s=>SENT[s]||SENT.neutral;
+
+  // The analyst's voice — sits directly under the nav bar on every slide
+  function storyBar(sec){
+    if(!sec?.story) return '';
+    const p=sent(sec.sentiment);
     return `<div class="ps-ai-bar" style="background:${p.bg};border-left:5px solid ${p.border}">
-      <span class="ps-ai-label" style="background:${p.badge};color:#fff">AI INSIGHT</span>
-      <span class="ps-ai-text" style="color:${p.text}">${esc(ins.narrative)}</span>
-      ${ins.alert?`<span class="ps-ai-alert" style="background:${p.badge}">${esc(ins.alert)}</span>`:''}
+      <span class="ps-ai-label" style="background:${p.badge}">ANALYSIS</span>
+      <span class="ps-ai-text" style="color:${p.text}">${esc(sec.story)}</span>
+      ${sec.alert?`<span class="ps-ai-alert" style="background:${p.badge}">${esc(sec.alert)}</span>`:''}
     </div>`;
   }
-  function slideHeader(active,title,pg,insight=null){
-    const aiTitle = insight?.headline || title;
-    return `${tabBar(active)}${insightBar(insight)}<div class="ps-titlerow"><div><div class="ps-title">${esc(aiTitle)}</div><div class="ps-title-accent"></div></div>${LOGO_HTML}<span class="ps-pgnum">${String(pg).padStart(2,'0')}</span></div>`;
+  // AI-written insight bullets — replaces the hardcoded KEY INSIGHTS list
+  function aiBullets(sec,fallback=''){
+    const b=Array.isArray(sec?.bullets)?sec.bullets.filter(x=>x?.text):[];
+    if(!b.length) return fallback;
+    return b.map(x=>`<div class="ps-insight-item"><span class="ps-insight-dot" style="background:${sent(x.sentiment).badge}"></span><span>${esc(x.text)}</span></div>`).join('');
+  }
+  // The "so what" line pinned to the bottom of a slide
+  function takeawayBar(sec){
+    if(!sec?.takeaway) return '';
+    const p=sent(sec.sentiment);
+    return `<div class="ps-takeaway" style="border-left:4px solid ${p.border}">
+      <span class="ps-take-label" style="color:${p.badge}">TAKEAWAY</span>
+      <span>${esc(sec.takeaway)}</span>
+    </div>`;
+  }
+  // Rows the AI flagged get a left marker + tint so the eye lands on them
+  function spotOf(sec){
+    const list=Array.isArray(sec?.spotlight)?sec.spotlight:[];
+    const set=new Set(list.map(s=>String(s).trim().toLowerCase()).filter(Boolean));
+    return name=>set.has(String(name||'').trim().toLowerCase());
+  }
+  // Wraps a row label so flagged rows are visually marked in the table
+  function spotLabel(name,isSpot){
+    return isSpot
+      ? {text:`▍${name}`,style:'font-weight:800;background:#FFFBEB;box-shadow:inset 3px 0 0 #D97706'}
+      : name;
+  }
+
+  function slideHeader(active,title,pg,sec=null){
+    const aiTitle = sec?.headline || title;
+    return `${tabBar(active)}${storyBar(sec)}<div class="ps-titlerow"><div><div class="ps-title">${esc(aiTitle)}</div><div class="ps-title-accent"></div></div>${LOGO_HTML}<span class="ps-pgnum">${String(pg).padStart(2,'0')}</span></div>`;
   }
   function kpiCard(label,val,col,bg,border){
     const c=col||T.brand, b=bg||T.brandBg, brd=border||T.brand;
@@ -4694,16 +4769,25 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
     <div class="ps-cover-footer"></div>
   </div>`);
 
-  // Slide 2: Executive Overview
+  // Slide 2: Executive Summary — AI-authored findings, static section map as fallback
+  const exec = ins.executive;
+  const execFindings = Array.isArray(exec?.findings) ? exec.findings.filter(f=>f?.text).slice(0,4) : [];
   SLIDES.push(`<div class="ps-slide">
     ${tabBar('')}
-    <div class="ps-titlerow"><div><div class="ps-title" style="color:#166534">EXECUTIVE OVERVIEW</div><div class="ps-title-accent"></div></div>${LOGO_HTML}</div>
+    <div class="ps-titlerow"><div><div class="ps-title" style="color:#166534">${esc(exec?.headline||'EXECUTIVE OVERVIEW')}</div><div class="ps-title-accent"></div></div>${LOGO_HTML}</div>
     <div class="ps-body ps-exec-grid">
-      ${[
+      ${execFindings.length ? execFindings.map(f=>{
+        const p=sent(f.sentiment);
+        return `<div class="ps-exec-card" style="background:${p.bg};border-left:6px solid ${p.border}">
+          <div class="ps-exec-label" style="color:${p.badge}">${esc(f.label||'')}</div>
+          <div class="ps-exec-metric" style="color:${p.text}">${esc(f.metric||'')}</div>
+          <div class="ps-exec-desc">${esc(f.text)}</div>
+        </div>`;
+      }).join('') : [
         {n:'01',name:'REVENUE',  desc:'YTD Revenue Performance, Core Business Overview, and Monthly Revenue Trends',col:'#166534',bg:'#F0FDF4'},
         {n:'02',name:'GROWTH',   desc:'Period Growth Analysis, Year-over-Year comparisons, and Same Store performance',col:'#ea580c',bg:'#FFF7ED'},
         {n:'03',name:'OUTLETS',  desc:'Outlet Performance, Regional Analysis, Area Leaders, and Top 5 Store Rankings',col:'#166534',bg:'#F0FDF4'},
-        {n:'04',name:'CATEGORY', desc:'Category Sales YTD, June Category Performance, Target Achievement, and Weekly Analysis',col:'#ea580c',bg:'#FFF7ED'},
+        {n:'04',name:'CATEGORY', desc:'Category Sales YTD, Category Performance, Target Achievement, and Weekly Analysis',col:'#ea580c',bg:'#FFF7ED'},
       ].map(q=>`<div class="ps-exec-card" style="background:${q.bg};border-left:6px solid ${q.col}">
         <div class="ps-exec-num" style="color:${q.col}">${q.n}</div>
         <div class="ps-exec-name" style="color:${q.col}">${q.name}</div>
@@ -4711,6 +4795,29 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
       </div>`).join('')}
     </div>
     <div class="ps-pgnum">02</div>
+  </div>`);
+
+  // Slide 2b: What Needs To Happen — AI priorities ranked by urgency
+  const prios = Array.isArray(ins.priorities) ? ins.priorities.filter(p=>p?.title).slice(0,3) : [];
+  if (prios.length) SLIDES.push(`<div class="ps-slide">
+    ${tabBar('')}
+    <div class="ps-titlerow"><div><div class="ps-title" style="color:#166534">WHAT NEEDS TO HAPPEN THIS MONTH</div><div class="ps-title-accent"></div></div>${LOGO_HTML}</div>
+    <div class="ps-body" style="gap:14px;justify-content:center">
+      ${prios.map((p,i)=>{
+        const u=p.urgency==='HIGH'?SENT.critical:p.urgency==='MED'?SENT.warning:SENT.neutral;
+        return `<div class="ps-prio-card" style="background:${u.bg};border-left:6px solid ${u.border}">
+          <div class="ps-prio-rank" style="color:${u.badge}">${i+1}</div>
+          <div class="ps-prio-body">
+            <div class="ps-prio-title" style="color:${u.text}">${esc(p.title)}</div>
+            <div class="ps-prio-why">${esc(p.why||'')}</div>
+          </div>
+          <div class="ps-prio-side">
+            <div class="ps-prio-badge" style="background:${u.badge}">${esc(p.urgency||'MED')}</div>
+            <div class="ps-prio-impact">${esc(p.impact||'')}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
   </div>`);
 
   // Slide 3: Revenue KPIs
@@ -4727,11 +4834,14 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
         <div style="flex:1.8">${revVs.length?barChart(revLbs,revVs,'Monthly Revenue 2026 (Billion Naira)'):'<div class="ps-no-data">No revenue data</div>'}</div>
         <div class="ps-insights" style="flex:1">
           <div class="ps-insight-title">KEY INSIGHTS</div>
-          ${peakLb&&peakV?`<div class="ps-insight-item"><span class="ps-insight-dot" style="background:#166534"></span><span><strong>${peakLb} 2026</strong> was the peak month at <strong>${fmtBil(peakV)}</strong></span></div>`:''}
-          ${momR!=null?`<div class="ps-insight-item"><span class="ps-insight-dot" style="background:${momR>=0?'#166534':'#DC2626'}"></span><span><strong style="color:${momR>=0?'#166534':'#DC2626'}">${fullMonth}</strong> ${momR<0?'declined':'grew'} ${Math.abs(momR).toFixed(1)}% from previous month to <strong>${fmtBil(lastV)}</strong></span></div>`:''}
-          ${q1a&&q2a?`<div class="ps-insight-item"><span class="ps-insight-dot" style="background:#6B7280"></span><span>Q2 average: <strong>${fmtBil(q2a)}</strong> vs Q1: <strong>${fmtBil(q1a)}</strong></span></div>`:''}
+          ${aiBullets(ins.revenue, `
+            ${peakLb&&peakV?`<div class="ps-insight-item"><span class="ps-insight-dot" style="background:#166534"></span><span><strong>${peakLb} 2026</strong> was the peak month at <strong>${fmtBil(peakV)}</strong></span></div>`:''}
+            ${momR!=null?`<div class="ps-insight-item"><span class="ps-insight-dot" style="background:${momR>=0?'#166534':'#DC2626'}"></span><span><strong style="color:${momR>=0?'#166534':'#DC2626'}">${fullMonth}</strong> ${momR<0?'declined':'grew'} ${Math.abs(momR).toFixed(1)}% from previous month to <strong>${fmtBil(lastV)}</strong></span></div>`:''}
+            ${q1a&&q2a?`<div class="ps-insight-item"><span class="ps-insight-dot" style="background:#6B7280"></span><span>Q2 average: <strong>${fmtBil(q2a)}</strong> vs Q1: <strong>${fmtBil(q1a)}</strong></span></div>`:''}
+          `)}
         </div>
       </div>
+      ${takeawayBar(ins.revenue)}
     </div>
   </div>`);
 
@@ -4779,7 +4889,7 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
     {lbl:'SAME STORE YTD',                 v:ssRg?.[3]},
   ].filter(k=>k.v!=null);
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('GROWTH','REVENUE & GROWTH',5,ins.revenue)}
+    ${slideHeader('GROWTH','REVENUE & GROWTH',5,ins.growth)}
     <div class="ps-body">
       <div class="ps-kpi-row">${growKpis.map(k=>{ const n=pN(k.v); const col=n!=null&&n>=0?'#166534':'#DC2626'; const bg=n!=null&&n>=0?'#F0FDF4':'#FEE2E2'; return kpiCard(k.lbl,yoyFmt(k.v),col,bg,col); }).join('')}</div>
       ${sLabel('MONTHLY GROWTH PERFORMANCE')}
@@ -4808,12 +4918,13 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
         ${globalOut?`<div class="ps-gkpi-detail">Target: ${fmtRaw(globalOut[1])}<br/>Actual: ${fmtRaw(globalOut[2])}</div>`:''}
       </div>
       <div style="flex:1">
-        ${table(['OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS'],
+        ${(()=>{ const isSpot=spotOf(ins.outlets); return table(['OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS'],
           [...(globalOut?[[{text:'GLOBAL',style:'font-weight:700;background:#DCFCE7'},numCell(fmtRaw(globalOut[1]),''),numCell(fmtRaw(globalOut[2]),''),numCell(fmtRaw(globalOut[4]),''),pctCell(globalOut[5]),statusCell(globalOut[5])]]:[]),
-          ...outRows.slice(0,16).map(r=>[ r[0], numCell(fmtRaw(r[1]),''), numCell(fmtRaw(r[2]),''), numCell(fmtRaw(r[4]),''), pctCell(r[5]), statusCell(r[5]) ]),
-        ], false, true)}
+          ...outRows.slice(0,16).map(r=>[ spotLabel(r[0],isSpot(r[0])), numCell(fmtRaw(r[1]),''), numCell(fmtRaw(r[2]),''), numCell(fmtRaw(r[4]),''), pctCell(r[5]), statusCell(r[5]) ]),
+        ], false, true); })()}
       </div>
     </div>
+    ${takeawayBar(ins.outlets)}
   </div>`);
 
   // Slide 7: Regional Performance
@@ -4837,7 +4948,7 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
     const suffix = alChunks.length > 1 ? ` (${ci+1}/${alChunks.length})` : '';
     const pgN = SLIDES.length + 1;
     SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('OUTLETS',`AREA LEADERS PERFORMANCE${suffix}`,pgN)}
+    ${slideHeader('OUTLETS',`AREA LEADERS PERFORMANCE${suffix}`,pgN,ins.area_leaders)}
     <div class="ps-body">
       ${table(['LEADER','OUTLET','TARGET','ACTUAL','DIFF','ACH%','STATUS'],
         chunk.map(r=>[ {text:r.leader,style:r.leader?'color:#166534;font-weight:700':''}, {text:r.outlet,style:r.isTotal?'font-weight:700':''}, numCell(fmtRaw(r.target),''), numCell(fmtRaw(r.actual),''), numCell(fmtRaw(r.diff),''), pctCell(r.pct), statusCell(r.pct) ]),
@@ -4866,7 +4977,7 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
 
   // Slide 10: Category YTD
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('CATEGORY','CATEGORY SALES YTD',10,ins.weekly)}
+    ${slideHeader('CATEGORY','CATEGORY SALES YTD',10,ins.category_ytd)}
     <div class="ps-body">
       ${sLabel('DEPARTMENT PERFORMANCE BY MONTH')}
       ${table(['DEPARTMENT',...catYCols],
@@ -4880,7 +4991,7 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
 
   // Slide 11: June Category Performance
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('CATEGORY',`${fullMonth.toUpperCase()} CATEGORY PERFORMANCE`,11,ins.weekly)}
+    ${slideHeader('CATEGORY',`${fullMonth.toUpperCase()} CATEGORY PERFORMANCE`,11,ins.category_month)}
     <div class="ps-body">
       ${sLabel(`${fullMonth.toUpperCase()} vs PREV MONTH TARGET ACHIEVEMENT`,true)}
       ${catLRows.length?table(
@@ -4918,7 +5029,7 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
     : `${fullMonth} Weekly Sales`;
   function stockColor(v){ return v!=null?(v>=90?'#166534':v>=85?'#15803d':v>=80?'#D97706':'#DC2626'):'#6B7280'; }
   SLIDES.push(`<div class="ps-slide">
-    ${slideHeader('CATEGORY',wkTitle13,13)}
+    ${slideHeader('CATEGORY',wkTitle13,13,ins.weekly)}
     <div class="ps-body">
       <div class="ps-week-cards">
         ${WK_COLS.map((_,i)=>{
@@ -5005,10 +5116,39 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
     </div>
   </div>`);
 
+  // Slide 16b: Risks & Opportunities — AI watchlist, two columns
+  const risks = Array.isArray(ins.risks) ? ins.risks.filter(r=>r?.text).slice(0,3) : [];
+  const opps  = Array.isArray(ins.opportunities) ? ins.opportunities.filter(r=>r?.text).slice(0,3) : [];
+  if (risks.length || opps.length) SLIDES.push(`<div class="ps-slide">
+    ${tabBar('')}
+    <div class="ps-titlerow"><div><div class="ps-title" style="color:#166534">RISKS &amp; OPPORTUNITIES</div><div class="ps-title-accent"></div></div>${LOGO_HTML}</div>
+    <div class="ps-body ps-split" style="gap:22px">
+      ${[
+        {items:risks, label:'WATCH THESE',    p:SENT.critical},
+        {items:opps,  label:'PRESS THESE',    p:SENT.positive},
+      ].map(col=>`<div style="flex:1;display:flex;flex-direction:column;gap:12px">
+        <div class="ps-watch-head" style="background:${col.p.badge}">${col.label}</div>
+        ${col.items.length ? col.items.map(it=>`<div class="ps-watch-card" style="background:${col.p.bg};border-left:5px solid ${col.p.border}">
+          <div class="ps-watch-metric" style="color:${col.p.badge}">${esc(it.metric||'')}</div>
+          <div class="ps-watch-text">${esc(it.text)}</div>
+        </div>`).join('') : '<div class="ps-no-data">None identified</div>'}
+      </div>`).join('')}
+    </div>
+  </div>`);
+
   // Slides 17 & 18: Action Plan (localStorage-backed, editable in-presentation)
   // Sentinel strings — goTo() rebuilds these dynamically so edits are reflected immediately
   const AP_JUN_KEY = `foodco_ap_${mLabel.toLowerCase()}`;
   const AP_JUL_KEY = `foodco_ap_${nextML.toLowerCase()}`;
+  // AI-proposed actions become the starting point; the user can still edit and
+  // their saved edits in localStorage always win over these.
+  const aiActions = Array.isArray(ins.actions)
+    ? ins.actions.filter(a=>a?.action).slice(0,9).map((a,i)=>[
+        String(i+1), String(a.action), String(a.owner||'HSO'),
+        `${fullMonth} ${String(a.due||'30').replace(/[^\d]/g,'')||'30'}`,
+        /HIGH|MED|LOW/.test(a.priority)?a.priority:'HIGH', String(a.outcome||''),
+      ])
+    : null;
   const defaultJunPlan=[['1','Launch Jumbo savings promotional push to sustain momentum','HSO',`${fullMonth} 15`,'HIGH','Revenue uplift vs May baseline — 125M WOW before promo period'],['2','Urgent intervention for Jericho, Gbagi, Lekki, Adegbayi, Akala, Ikotun on revenue','HSO',`${fullMonth} 30`,'HIGH','Restore 3 outlets to 85%+ achievement'],['3','Deliver 95% manning execution','HSO',`${fullMonth} 30`,'HIGH','Improve customer engagement'],['4','Continuous drive Cashier/Bread -17% decline','Operations Support Mgr',`${fullMonth} 30`,'HIGH','Reduce decline and recover to -10%'],['5','Drive initiative on High savings / High Pay Diesel cost reduction plan','Operations Support',`${fullMonth} 30`,'HIGH','Save N15M power costs'],['6','Strong follow up on Affordability campaign instore — Shelf talkers/Associate communication','Category Mgt Team',`${fullMonth} 30`,'HIGH','Improve customer perception on being most affordable'],['7','Initiate Corporate sales and Offcycle hamper production','Olufunmi',`${fullMonth} 15`,'MED','+20M sales revenue expected'],['8','Drive Chop Beta improved sales','Fisayo',`${fullMonth} 30`,'MED','Achieve +25% sales growth over previous month']];
   const defaultJulPlan=[['1',`Launch ${nextMFull} promotional push for end of month through first week in August`,'HSO',`${nextMFull} 15`,'HIGH','Revenue uplift'],['2','Execute two key intervention plan for Jericho, Gbagi, Lekki, Adegbayi, Akala, Ikotun on revenue','HSO',`${nextMFull} 15`,'HIGH','Restore 3 outlets to 82%+ achievement'],['3','Area Coach performance assessment twice monthly','HSO',`${nextMFull} 15, 30`,'HIGH','Enhance overall performance'],['4','Continuous drive Cashier/Bread -14% decline','Operations Support Mgr',`${nextMFull} 31`,'HIGH','Reduce decline and recover to -10%'],['5','Drive merchandising focus on raining season key items','Silas',`${nextMFull} 10`,'HIGH','Improve visibility and revenue'],['6','Execute Chop Beta/Grill offering campaign (Free drink)','Adio',`${nextMFull} 10`,'MED','Enhance revenue for 3F'],['7','Cashier manning status to hit 100%','Adio',`${nextMFull} 15`,'HIGH','Improve service delivery'],['8','Deliver 95% manning execution with HR - Godspower','HSO',`${nextMFull} 15`,'HIGH','Improve customer engagement and merchandising'],['9','Drive "HERE TO HELP CAMPAIGN" shopfloor team','HSO',`${nextMFull} 15`,'HIGH','Customer excitement']];
 
@@ -5171,11 +5311,31 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
       /* ── Insight banner ── */
       .ps-insight-banner{background:#F0FDF4;border:1px solid #166534;border-radius:4px;padding:7px 14px;font-size:0.9em;color:#374151;flex-shrink:0;}
       .ps-no-data{color:#9CA3AF;font-style:italic;font-size:0.92em;padding:14px 0;}
-      /* ── AI Insight bar ── */
+      /* ── AI analysis bar ── */
       .ps-ai-bar{display:flex;align-items:center;gap:12px;padding:5px 22px;flex-shrink:0;border-bottom:1px solid rgba(0,0,0,0.05);}
-      .ps-ai-label{font-size:0.6em;font-weight:900;letter-spacing:2.5px;padding:2px 7px;border-radius:3px;flex-shrink:0;}
+      .ps-ai-label{font-size:0.6em;font-weight:900;letter-spacing:2.5px;padding:2px 7px;border-radius:3px;flex-shrink:0;color:#fff;}
       .ps-ai-text{font-size:0.82em;line-height:1.4;flex:1;font-style:italic;}
       .ps-ai-alert{font-size:0.72em;font-weight:800;color:#fff;padding:2px 9px;border-radius:10px;white-space:nowrap;flex-shrink:0;letter-spacing:.3px;}
+      /* ── Takeaway footer ── */
+      .ps-takeaway{display:flex;align-items:baseline;gap:10px;background:#FAFAF9;padding:7px 14px;margin-top:auto;flex-shrink:0;font-size:0.86em;color:#374151;line-height:1.45;}
+      .ps-take-label{font-size:0.72em;font-weight:900;letter-spacing:2px;flex-shrink:0;}
+      /* ── Executive summary cards (AI findings) ── */
+      .ps-exec-label{font-size:0.82em;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;}
+      .ps-exec-metric{font-size:2.5em;font-weight:900;line-height:1.05;margin:2px 0 6px;font-variant-numeric:tabular-nums;}
+      /* ── Priority cards ── */
+      .ps-prio-card{display:flex;align-items:center;gap:20px;border-radius:6px;padding:18px 24px;flex:1;}
+      .ps-prio-rank{font-size:3.2em;font-weight:900;line-height:1;flex-shrink:0;width:52px;text-align:center;}
+      .ps-prio-body{flex:1;min-width:0;}
+      .ps-prio-title{font-size:1.32em;font-weight:800;line-height:1.25;margin-bottom:5px;}
+      .ps-prio-why{font-size:0.95em;color:#374151;line-height:1.5;}
+      .ps-prio-side{width:210px;flex-shrink:0;text-align:right;}
+      .ps-prio-badge{display:inline-block;color:#fff;font-size:0.7em;font-weight:900;letter-spacing:1.5px;padding:3px 11px;border-radius:11px;margin-bottom:6px;}
+      .ps-prio-impact{font-size:0.85em;color:#4B5563;line-height:1.45;}
+      /* ── Risks & opportunities ── */
+      .ps-watch-head{color:#fff;font-size:0.86em;font-weight:900;letter-spacing:2.5px;padding:9px 16px;border-radius:4px;flex-shrink:0;}
+      .ps-watch-card{border-radius:5px;padding:15px 18px;flex:1;display:flex;flex-direction:column;justify-content:center;}
+      .ps-watch-metric{font-size:1.75em;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums;}
+      .ps-watch-text{font-size:0.97em;color:#374151;line-height:1.5;margin-top:5px;}
     `;
     document.head.appendChild(style);
   }
@@ -5243,12 +5403,16 @@ Return ONLY valid JSON with keys: revenue, core_business, outlets, regions, yoy,
     window._presCur=cur;
     let html=SLIDES[cur];
     // Resolve action plan sentinels dynamically so edits show immediately
-    if(html==='__AP_JUN__') html=applyTheme(buildAPSlide(`${fullMonth.toUpperCase()} 2026`,AP_JUN_KEY,defaultJunPlan,cur+1,false));
+    if(html==='__AP_JUN__') html=applyTheme(buildAPSlide(`${fullMonth.toUpperCase()} 2026`,AP_JUN_KEY,aiActions||defaultJunPlan,cur+1,false));
     if(html==='__AP_JUL__') html=applyTheme(buildAPSlide(`${nextMFull.toUpperCase()} 2026`,AP_JUL_KEY,defaultJulPlan,cur+1,true));
     frame.innerHTML=html;
     if(window._presLogoUrl){
       frame.querySelectorAll('.ps-cover-logo,.ps-logo').forEach(el=>{if(el.tagName==='IMG')el.src=window._presLogoUrl;});
     }
+    // Page numbers are computed at render time so inserting AI slides never
+    // breaks the sequence printed on each slide.
+    const pg=frame.querySelector('.ps-pgnum');
+    if(pg&&cur>0) pg.textContent=String(cur+1).padStart(2,'0');
     document.getElementById('ps-counter').textContent=`${cur+1} / ${SLIDES.length}`;
     progress.style.width=`${((cur+1)/SLIDES.length)*100}%`;
   }
